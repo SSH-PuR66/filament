@@ -219,10 +219,18 @@ py look.py               # one downscaled frame in about a second
 
 ### `appleid.py` — a signing identity from a free Apple ID
 
+This one lives in its own virtualenv, because the anisette provider pulls in a
+CPU emulator that has no business in the interpreter driving the phone:
+
 ```
-py appleid.py doctor
-py appleid.py login --apple-id you@example.com
-py appleid.py identity --bundle-id com.you.app
+py -m venv .signing-venv
+.signing-venv\Scripts\pip install anisette srp cryptography requests certifi
+```
+
+```
+.signing-venv\Scripts\python appleid.py doctor
+.signing-venv\Scripts\python appleid.py login --apple-id you@example.com
+.signing-venv\Scripts\python appleid.py identity --bundle-id com.you.app
 ```
 
 Asks Apple for a real development certificate — the same request Xcode makes,
