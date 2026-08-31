@@ -1,0 +1,10 @@
+[
+  {"note": "drive the phone across two apps and verify each - no signing anywhere"},
+  {"launch": "Calculator"},
+  {"expect": "Keyboard Key"},
+  {"shot": "at-calculator.png"},
+  {"launch": "Safari"},
+  {"expect_absent": "Keyboard Key"},
+  {"shot": "at-safari.png"},
+  {"note": "both screens verified from the device's own accessibility tree"}
+]

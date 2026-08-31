@@ -1,0 +1,11 @@
+[
+  {"note": "open notifications from the lock screen and prove the screen changed"},
+  {"expect": "Show Notifications"},
+  {"shot": "flow-before.png"},
+  {"tap": "Show Notifications"},
+  {"expect_absent": "Show Notifications"},
+  {"note": "the button is provably gone - the tap navigated somewhere new"},
+  {"shot": "flow-after.png"},
+  {"focus": "first"},
+  {"note": "focus moved to the first element of the new screen"}
+]

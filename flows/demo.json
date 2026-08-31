@@ -1,0 +1,8 @@
+[
+  {"note": "prove the runner checks every step against the live screen"},
+  {"expect": "App Library"},
+  {"shot": "flow-before.png"},
+  {"tap": "Settings"},
+  {"expect": "General"},
+  {"shot": "flow-after.png"}
+]

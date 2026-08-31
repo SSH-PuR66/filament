@@ -1,0 +1,9 @@
+[
+  {"note": "close the Now Playing view, then verify the screen actually changed"},
+  {"expect": "Now Playing View"},
+  {"shot": "flow-before.png"},
+  {"tap": "Close the Now Playing View"},
+  {"expect_absent": "Close the Now Playing View"},
+  {"shot": "flow-after.png"},
+  {"note": "if we got here, the tap landed and the view is provably gone"}
+]

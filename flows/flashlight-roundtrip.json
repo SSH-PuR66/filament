@@ -1,0 +1,11 @@
+[
+  {"note": "toggle the flashlight on, verify from the device's own caption, then restore it"},
+  {"expect": "Flashlight, Off"},
+  {"tap": "Flashlight"},
+  {"expect_absent": "Flashlight, Off"},
+  {"note": "the device now reports the torch as on - the tap provably landed"},
+  {"shot": "torch-on.png"},
+  {"tap": "Flashlight"},
+  {"expect": "Flashlight, Off"},
+  {"note": "restored - the phone is exactly as we found it"}
+]

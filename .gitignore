@@ -1,0 +1,54 @@
+# ---------------------------------------------------------------------------
+# Credentials and device identity. Nothing in here may ever be committed.
+# ---------------------------------------------------------------------------
+# session.json authenticates as you to Apple's developer portal.
+# anisette.bin is this machine's identity to Apple - publishing it would let
+# someone else present themselves as this device.
+# login.log records which Apple ID was used.
+.signing/
+selfIdentity.plist
+session.url
+
+# Signing material, wherever it lands.
+*.p12
+*.mobileprovision
+*.pem.key
+identity/
+
+# ---------------------------------------------------------------------------
+# Captures of a real phone's screen. These routinely contain messages,
+# contacts and notifications, which is exactly the sort of thing that ends up
+# in a repository by accident.
+# ---------------------------------------------------------------------------
+.frames/
+*.png
+*.jpg
+*.mp4
+*.mov
+
+# ---------------------------------------------------------------------------
+# Local environment
+# ---------------------------------------------------------------------------
+.signing-venv/
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.bak
+
+# Logs and scratch output
+*.log
+*.out
+fil.out
+shutter.out
+
+# App payloads - large, and usually someone else's to distribute
+*.ipa
+*.app/
+
+# The pinned Apple Root CA IS wanted: it is public, and sideload.py verifies
+# profiles against it. Re-include it after the *.pem-adjacent rules above.
+!certs/AppleRootCA.pem
+!certs/AppleRootCA.cer
+!docs/*.png
+!docs/*.svg
