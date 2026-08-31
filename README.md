@@ -265,6 +265,16 @@ devices to push a code to, so it verifies over SMS:
 Left alone, the method is chosen by asking Apple what the account actually
 has. `--trusted-device` forces the push; `--phone-id` picks between numbers.
 
+Two things about that throwaway account are worth knowing before you try:
+
+- **Apple refuses VoIP numbers** — Google Voice, Twilio, TextNow — as trusted
+  numbers, so there is no "get a disposable number" shortcut. A public
+  SMS-receiving site is worse than no plan at all: a shared inbox means anyone
+  can take over the account holding your signing certificate.
+- **You do not need a second number.** Apple accepts the *same* phone number
+  as a trusted number on more than one Apple ID, so an existing handset number
+  can verify a new development-only account.
+
 Credentials, stated plainly: the **password is never stored** — read via
 `getpass`, used for the SRP exchange, dropped. The **private key never leaves
 this machine**; Apple only ever sees the CSR. The session token *is* saved,
