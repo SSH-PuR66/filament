@@ -224,13 +224,13 @@ CPU emulator that has no business in the interpreter driving the phone:
 
 ```
 py -m venv .signing-venv
-.signing-venv\Scripts\pip install anisette srp cryptography requests certifi
+.\.signing-venv\Scripts\pip.exe install anisette srp cryptography requests certifi
 ```
 
 ```
-.signing-venv\Scripts\python appleid.py doctor
-.signing-venv\Scripts\python appleid.py login --apple-id you@example.com
-.signing-venv\Scripts\python appleid.py identity --bundle-id com.you.app
+.\.signing-venv\Scripts\python.exe appleid.py doctor
+.\.signing-venv\Scripts\python.exe appleid.py login --apple-id you@example.com
+.\.signing-venv\Scripts\python.exe appleid.py identity --bundle-id com.you.app
 ```
 
 Asks Apple for a real development certificate — the same request Xcode makes,
@@ -325,7 +325,7 @@ sideload.py install  →  onto the device
 
 ```
 py test_filament.py                              # 76 tests
-.signing-venv\Scripts\python.exe test_signing.py # 57 tests
+.\.signing-venv\Scripts\python.exe test_signing.py # 57 tests
 ```
 
 No device, no network, no Apple ID required for either. Each of the 76 in the
