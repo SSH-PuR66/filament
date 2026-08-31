@@ -21,10 +21,10 @@
 
   <!-- One filament running the width of the card: host at the left end,
        device at the right. Kept clear of every text baseline. -->
-  <path d="M64 246 C 340 246, 380 206, 600 206 S 860 246, 1136 246"
+  <path d="M64 268 C 340 268, 380 248, 600 248 S 860 268, 1136 268"
         fill="none" stroke="url(#wire)" stroke-width="3" filter="url(#glow)"/>
-  <circle cx="64" cy="246" r="7" fill="#1f6feb"/>
-  <circle cx="1136" cy="246" r="7" fill="#3fb950"/>
+  <circle cx="64" cy="268" r="7" fill="#1f6feb"/>
+  <circle cx="1136" cy="268" r="7" fill="#3fb950"/>
 
   <text x="64" y="122" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace"
         font-size="104" font-weight="700" fill="#e6edf3" letter-spacing="-4">filament</text>
