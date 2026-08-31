@@ -73,7 +73,7 @@
   </g>
 
   <g font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="12.5">
-    <text x="84" y="284" fill="#3fb950">133 tests</text>
+    <text x="84" y="284" fill="#3fb950">139 tests</text>
     <text x="176" y="284" fill="#30363d">|</text>
     <text x="196" y="284" fill="#7d8590">loopback only</text>
     <text x="316" y="284" fill="#30363d">|</text>

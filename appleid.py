@@ -87,6 +87,12 @@ SESSION_STATE = os.path.join(STATE_DIR, "session.json")
 GSA_URL = "https://gsa.apple.com/grandslam/GsService2"
 GSA_VALIDATE_URL = "https://gsa.apple.com/grandslam/GsService2/validate"
 GSA_TRUSTED_DEVICE_URL = "https://gsa.apple.com/auth/verify/trusteddevice"
+# SMS is the path that matters for an Apple ID with no Apple devices signed
+# into it - which is exactly the throwaway account someone should be using
+# rather than the Apple ID holding their photos and payment methods.
+GSA_AUTH_URL = "https://gsa.apple.com/auth"
+GSA_SMS_REQUEST_URL = "https://gsa.apple.com/auth/verify/phone"
+GSA_SMS_SUBMIT_URL = "https://gsa.apple.com/auth/verify/phone/securitycode"
 
 # Xcode's own identifiers. The portal rejects requests that do not look like a
 # client it knows, and these are the values AltStore has used for years.
@@ -393,6 +399,84 @@ class AppleID(object):
         if r.status_code not in (200, 412):
             raise AppleError("could not request a 2FA code: HTTP %d"
                              % r.status_code)
+
+    # -- SMS two factor ----------------------------------------------------
+
+    def two_factor_methods(self, adsid, idms_token):
+        """What Apple is willing to send a code to. -> (dict, error).
+
+        Matters because the answer decides the whole flow: an account with a
+        trusted Apple device gets a push, and an account with only a phone
+        number - a fresh throwaway - must go over SMS.
+        """
+        headers = self._2fa_headers(adsid, idms_token)
+        headers["Accept"] = "application/json"
+        headers["Content-Type"] = "application/json"
+        try:
+            r = self.http.get(GSA_AUTH_URL, headers=headers, timeout=60)
+        except Exception as exc:
+            return None, str(exc)
+        if r.status_code not in (200, 201, 412):
+            return None, "HTTP %d asking Apple for its 2FA methods" % r.status_code
+        try:
+            return r.json(), None
+        except Exception:
+            return None, "Apple's 2FA method list was not JSON"
+
+    @staticmethod
+    def trusted_phones(methods):
+        """[(id, masked_number)] from the methods payload."""
+        out = []
+        for p in ((methods or {}).get("trustedPhoneNumbers") or []):
+            pid = p.get("id")
+            if pid is None:
+                continue
+            out.append((pid, p.get("numberWithDialCode")
+                        or p.get("obfuscatedNumber") or "?"))
+        return out
+
+    def request_sms_code(self, adsid, idms_token, phone_id):
+        """Ask Apple to text a code to one of the account's numbers."""
+        headers = self._2fa_headers(adsid, idms_token)
+        headers["Accept"] = "application/json"
+        headers["Content-Type"] = "application/json"
+        body = {"phoneNumber": {"id": int(phone_id)}, "mode": "sms"}
+        try:
+            r = self.http.put(GSA_SMS_REQUEST_URL, headers=headers,
+                              json=body, timeout=60)
+        except Exception as exc:
+            raise AppleError("could not request an SMS code: %s" % exc)
+        # 200 sent it; 412 means the account still needs verification, which
+        # is the state we are in by definition.
+        if r.status_code not in (200, 201, 412):
+            raise AppleError("Apple refused to send an SMS code (HTTP %d)"
+                             % r.status_code)
+
+    def submit_sms_code(self, adsid, idms_token, phone_id, code):
+        headers = self._2fa_headers(adsid, idms_token)
+        headers["Accept"] = "application/json"
+        headers["Content-Type"] = "application/json"
+        body = {"phoneNumber": {"id": int(phone_id)},
+                "securityCode": {"code": str(code).strip()},
+                "mode": "sms"}
+        try:
+            r = self.http.post(GSA_SMS_SUBMIT_URL, headers=headers,
+                               json=body, timeout=60)
+        except Exception as exc:
+            raise AppleError("could not submit the SMS code: %s" % exc)
+        if r.status_code in (200, 201, 204):
+            return
+        # Apple explains itself in JSON here; use its words, not ours.
+        detail = ""
+        try:
+            body = r.json()
+            svc = (body.get("service_errors") or [{}])[0]
+            detail = svc.get("message") or body.get("message") or ""
+        except Exception:
+            detail = (r.text or "")[:120]
+        raise AppleError("Apple rejected the SMS code%s"
+                         % (": " + detail if detail else
+                            " (HTTP %d)" % r.status_code))
 
     def submit_2fa_code(self, adsid, idms_token, code):
         headers = self._2fa_headers(adsid, idms_token)
@@ -820,15 +904,53 @@ def cmd_login(args):
 
         if spd.get("_au") in ("secondaryAuth", "trustedDeviceSecondaryAuth"):
             stage = "2fa"
-            print("  two-factor required - Apple is sending a code to your "
-                  "trusted devices")
-            api.request_2fa_code(spd["adsid"], spd["GsIdmsToken"])
-            code = (args.code or "").strip() or input("  code: ").strip()
-            if not code:
-                journal(stage, "FAIL", "no code entered", args.apple_id)
-                print("\n  no code entered\n")
-                return 2
-            api.submit_2fa_code(spd["adsid"], spd["GsIdmsToken"], code)
+            adsid, idms = spd["adsid"], spd["GsIdmsToken"]
+
+            # Which route? An Apple ID signed into an iPhone gets a push; a
+            # fresh account with only a phone number must use SMS. Asking
+            # Apple beats guessing, and guessing wrong sends the code
+            # somewhere the user is not looking.
+            phones = []
+            if not args.trusted_device:
+                methods, merr = api.two_factor_methods(adsid, idms)
+                if merr:
+                    api._say("could not list 2FA methods (%s)" % merr)
+                phones = api.trusted_phones(methods)
+
+            use_sms = args.sms or (phones and not args.trusted_device
+                                   and spd.get("_au") == "secondaryAuth")
+
+            if use_sms and phones:
+                phone_id, shown = phones[0]
+                if args.phone_id is not None:
+                    match = [p for p in phones if str(p[0]) == str(args.phone_id)]
+                    if not match:
+                        raise AppleError(
+                            "no trusted number with id %s - Apple lists: %s"
+                            % (args.phone_id,
+                               ", ".join("%s=%s" % p for p in phones)))
+                    phone_id, shown = match[0]
+                print("  two-factor required - texting a code to %s" % shown)
+                if len(phones) > 1:
+                    print("     (others: %s - choose with --phone-id)"
+                          % ", ".join("%s=%s" % p for p in phones[1:]))
+                api.request_sms_code(adsid, idms, phone_id)
+                code = (args.code or "").strip() or input("  code: ").strip()
+                if not code:
+                    journal(stage, "FAIL", "no code entered", args.apple_id)
+                    print("\n  no code entered\n")
+                    return 2
+                api.submit_sms_code(adsid, idms, phone_id, code)
+            else:
+                print("  two-factor required - Apple is sending a code to "
+                      "your trusted devices")
+                api.request_2fa_code(adsid, idms)
+                code = (args.code or "").strip() or input("  code: ").strip()
+                if not code:
+                    journal(stage, "FAIL", "no code entered", args.apple_id)
+                    print("\n  no code entered\n")
+                    return 2
+                api.submit_2fa_code(adsid, idms, code)
             journal(stage, "ok", "", args.apple_id)
             print("  code accepted - re-authenticating")
             # The second login is not optional: the first one only ever
@@ -1123,6 +1245,14 @@ def main():
     p.add_argument("--password-stdin", action="store_true",
                    help="read the password from stdin")
     p.add_argument("--code", help="2FA code, if you already have one")
+    p.add_argument("--sms", action="store_true",
+                   help="send the 2FA code by SMS - the right choice for an "
+                        "Apple ID with no Apple devices signed into it")
+    p.add_argument("--trusted-device", action="store_true",
+                   help="force the trusted-device push instead of SMS")
+    p.add_argument("--phone-id",
+                   help="which trusted number to text, when the account has "
+                        "more than one")
     p.set_defaults(fn=cmd_login)
 
     p = sub.add_parser("status", help="what is signed in, and for how long")

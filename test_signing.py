@@ -339,6 +339,39 @@ check("the real root still passes after the tamper test",
       appleid.ca_bundle() == bundle)
 
 
+section("two-factor method selection")
+
+# Which 2FA route to take is decided by what Apple says the account has, not
+# by a guess - guessing wrong sends the code somewhere nobody is looking.
+A = appleid.AppleID
+
+check("a trusted phone number is found",
+      A.trusted_phones({"trustedPhoneNumbers": [
+          {"id": 1, "numberWithDialCode": "+1 (•••) •••-••34"}]})
+      == [(1, "+1 (•••) •••-••34")])
+
+check("several numbers are all offered",
+      len(A.trusted_phones({"trustedPhoneNumbers": [
+          {"id": 1, "numberWithDialCode": "a"},
+          {"id": 2, "numberWithDialCode": "b"}]})) == 2)
+
+check("the obfuscated spelling is accepted too",
+      A.trusted_phones({"trustedPhoneNumbers": [
+          {"id": 7, "obfuscatedNumber": "•••• 99"}]}) == [(7, "•••• 99")])
+
+check("an entry with no id is skipped rather than crashing",
+      A.trusted_phones({"trustedPhoneNumbers": [{"numberWithDialCode": "x"}]})
+      == [])
+
+check("an account with no numbers yields none",
+      A.trusted_phones({}) == [] and A.trusted_phones(None) == [])
+
+check("SMS endpoints are Apple's, not invented",
+      appleid.GSA_SMS_REQUEST_URL == "https://gsa.apple.com/auth/verify/phone"
+      and appleid.GSA_SMS_SUBMIT_URL
+      == "https://gsa.apple.com/auth/verify/phone/securitycode")
+
+
 section("login journal")
 
 real_log = appleid.LOGIN_LOG

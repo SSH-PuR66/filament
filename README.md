@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="tests" src="https://img.shields.io/badge/tests-133%20passing-3fb950?style=flat-square&labelColor=161b22">
+  <img alt="tests" src="https://img.shields.io/badge/tests-139%20passing-3fb950?style=flat-square&labelColor=161b22">
   <img alt="platform" src="https://img.shields.io/badge/platform-Windows%2011-1f6feb?style=flat-square&labelColor=161b22">
   <img alt="admin" src="https://img.shields.io/badge/admin-not%20required-3fb950?style=flat-square&labelColor=161b22">
   <img alt="python" src="https://img.shields.io/badge/python-3.14-8b949e?style=flat-square&labelColor=161b22">
@@ -251,6 +251,20 @@ A failed login reports **which of the five protocol stages** it died in
 (anisette → srp-init → password → 2fa → token) with advice specific to that
 stage, and appends a line to `.signing/login.log`.
 
+**Which Apple ID?** "Free" is the account *tier*, not a separate account —
+every Apple ID has a free Personal Team good for 7-day certificates. You can
+use a throwaway Apple ID rather than the one holding your photos and payment
+methods; the app does not care which account signed it, you simply trust the
+developer profile on the device afterwards. A fresh account has no Apple
+devices to push a code to, so it verifies over SMS:
+
+```
+.\.signing-venv\Scripts\python.exe appleid.py login --apple-id you@example.com --sms
+```
+
+Left alone, the method is chosen by asking Apple what the account actually
+has. `--trusted-device` forces the push; `--phone-id` picks between numbers.
+
 Credentials, stated plainly: the **password is never stored** — read via
 `getpass`, used for the SRP exchange, dropped. The **private key never leaves
 this machine**; Apple only ever sees the CSR. The session token *is* saved,
@@ -324,8 +338,8 @@ sideload.py install  →  onto the device
 ## Tests
 
 ```
-py test_filament.py                              # 76 tests
-.\.signing-venv\Scripts\python.exe test_signing.py # 57 tests
+py test_filament.py                                 # 76 tests
+.\.signing-venv\Scripts\python.exe test_signing.py  # 63 tests
 ```
 
 No device, no network, no Apple ID required for either. Each of the 76 in the
@@ -334,7 +348,7 @@ running the code — a refcount that leaked a screen broadcast on `0.0.0.0`, a
 token comparison that raised on a non-ASCII character and killed the request, a
 backoff that failed to arm on the early-return paths.
 
-The 57 signing tests pin down what Apple's crypto lets you get wrong *quietly*:
+The 63 signing tests pin down what Apple's crypto lets you get wrong *quietly*:
 the wrong PBKDF2 variant reads as "bad password", a dropped GCM AAD still
 decrypts on some libraries, and a certificate field renamed between API
 generations reads as success followed by an empty file. Each is tested by
