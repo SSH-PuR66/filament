@@ -1,18 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 620" width="1180" height="620" role="img" aria-label="Filament architecture: host tools, transport, and the services they reach on the device">
   <defs>
-    <style>
-      .t   { font-family: ui-monospace,SFMono-Regular,Consolas,monospace; }
-      .s   { font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif; }
-      .box { fill:#0d1117; stroke:#30363d; stroke-width:1.5; }
-      .lane{ fill:#0b0f14; stroke:#21262d; stroke-width:1; }
-      .h   { fill:#e6edf3; font-size:13px; font-weight:600; }
-      .l   { fill:#8b949e; font-size:11.5px; }
-      .d   { fill:#6e7681; font-size:10.5px; }
-      .cap { fill:#7d8590; font-size:11px; letter-spacing:1.4px; }
-      .ok  { fill:#3fb950; }
-      .no  { fill:#f85149; }
-      .warn{ fill:#e3b341; }
-    </style>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
       <path d="M0 0 L10 5 L0 10 z" fill="#484f58"/>
     </marker>
@@ -20,151 +7,131 @@
 
   <rect width="1180" height="620" fill="#010409"/>
 
-  <!-- ============ lanes ============ -->
-  <rect class="lane" x="24"  y="56" width="332" height="524" rx="8"/>
-  <rect class="lane" x="392" y="56" width="212" height="524" rx="8"/>
-  <rect class="lane" x="640" y="56" width="516" height="524" rx="8"/>
+  <!-- lanes -->
+  <rect x="24"  y="56" width="332" height="524" rx="8" fill="#0b0f14" stroke="#21262d" stroke-width="1"/>
+  <rect x="392" y="56" width="212" height="524" rx="8" fill="#0b0f14" stroke="#21262d" stroke-width="1"/>
+  <rect x="640" y="56" width="516" height="524" rx="8" fill="#0b0f14" stroke="#21262d" stroke-width="1"/>
 
-  <text class="t cap" x="40"  y="42">WINDOWS HOST</text>
-  <text class="t cap" x="408" y="42">TRANSPORT</text>
-  <text class="t cap" x="656" y="42">iPHONE — SERVICES REACHED</text>
-
-  <!-- ============ host tools ============ -->
-  <g>
-    <rect class="box" x="44" y="76" width="292" height="60" rx="6"/>
-    <text class="t h" x="60" y="98">filament.py</text>
-    <text class="s l" x="60" y="116">daemon + web UI, loopback, token-gated</text>
-    <text class="s d" x="60" y="130">five-rung ladder: device → tunnel → devmode → image → capture</text>
+  <g font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="11" fill="#7d8590" letter-spacing="1.4">
+    <text x="40"  y="42">WINDOWS HOST</text>
+    <text x="408" y="42">TRANSPORT</text>
+    <text x="656" y="42">iPHONE — SERVICES REACHED</text>
   </g>
 
-  <g>
-    <rect class="box" x="44" y="148" width="292" height="52" rx="6"/>
-    <text class="t h" x="60" y="170">flow.py</text>
-    <text class="s l" x="60" y="188">JSON steps, every one asserted; waits, never sleeps</text>
-  </g>
+  <!-- ===================== host tools ===================== -->
+  <rect x="44" y="76" width="292" height="60" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+  <text x="60" y="98" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="13" font-weight="600" fill="#e6edf3">filament.py</text>
+  <text x="60" y="116" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8b949e">daemon + web UI, loopback, token-gated</text>
+  <text x="60" y="130" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">ladder: device → tunnel → devmode → image → capture</text>
 
-  <g>
-    <rect class="box" x="44" y="212" width="140" height="72" rx="6"/>
-    <text class="t h" x="60" y="234">launch.py</text>
-    <text class="s d" x="60" y="250">start any app,</text>
-    <text class="s d" x="60" y="264">prove it is in front</text>
+  <rect x="44" y="148" width="292" height="52" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+  <text x="60" y="170" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="13" font-weight="600" fill="#e6edf3">flow.py</text>
+  <text x="60" y="188" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8b949e">JSON steps, every one asserted; waits, never sleeps</text>
 
-    <rect class="box" x="196" y="212" width="140" height="72" rx="6"/>
-    <text class="t h" x="212" y="234">inspect_ui.py</text>
-    <text class="s d" x="212" y="250">element tree,</text>
-    <text class="s d" x="212" y="264">press by caption</text>
-  </g>
+  <rect x="44" y="212" width="140" height="72" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+  <text x="60" y="234" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="13" font-weight="600" fill="#e6edf3">launch.py</text>
+  <text x="60" y="250" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">start any app,</text>
+  <text x="60" y="264" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">prove it is in front</text>
 
-  <g>
-    <rect class="box" x="44" y="296" width="140" height="72" rx="6"/>
-    <text class="t h" x="60" y="318">capture.py</text>
-    <text class="s d" x="60" y="334">camera-roll pulls,</text>
-    <text class="s d" x="60" y="348">works with DDI off</text>
+  <rect x="196" y="212" width="140" height="72" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+  <text x="212" y="234" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="13" font-weight="600" fill="#e6edf3">inspect_ui.py</text>
+  <text x="212" y="250" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">element tree,</text>
+  <text x="212" y="264" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">press by caption</text>
 
-    <rect class="box" x="196" y="296" width="140" height="72" rx="6"/>
-    <text class="t h" x="212" y="318">look.py</text>
-    <text class="s d" x="212" y="334">one downscaled</text>
-    <text class="s d" x="212" y="348">frame, ~1s</text>
-  </g>
+  <rect x="44" y="296" width="140" height="72" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+  <text x="60" y="318" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="13" font-weight="600" fill="#e6edf3">capture.py</text>
+  <text x="60" y="334" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">camera-roll pulls,</text>
+  <text x="60" y="348" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">works with DDI off</text>
+
+  <rect x="196" y="296" width="140" height="72" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+  <text x="212" y="318" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="13" font-weight="600" fill="#e6edf3">look.py</text>
+  <text x="212" y="334" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">one downscaled</text>
+  <text x="212" y="348" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">frame, ~1s</text>
 
   <!-- signing chain -->
   <rect x="44" y="392" width="292" height="172" rx="6" fill="#0d1117" stroke="#3d2f12" stroke-width="1.5"/>
-  <text class="t cap" x="60" y="414" fill="#e3b341">SIGNING CHAIN</text>
+  <text x="60" y="414" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="11" fill="#e3b341" letter-spacing="1.4">SIGNING CHAIN</text>
 
-  <rect class="box" x="60" y="424" width="260" height="40" rx="5"/>
-  <text class="t h" x="74" y="441">appleid.py</text>
-  <text class="s d" x="74" y="456">GSA/SRP + anisette → certificate + profile</text>
+  <rect x="60" y="424" width="260" height="40" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+  <text x="74" y="441" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="12.5" font-weight="600" fill="#e6edf3">appleid.py</text>
+  <text x="74" y="456" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">GSA/SRP + anisette → certificate + profile</text>
 
-  <rect class="box" x="60" y="472" width="260" height="40" rx="5"/>
-  <text class="t h" x="74" y="489">resign.py</text>
-  <text class="s d" x="74" y="504">rewrite profile + entitlements, re-sign Mach-Os</text>
+  <rect x="60" y="472" width="260" height="40" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+  <text x="74" y="489" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="12.5" font-weight="600" fill="#e6edf3">resign.py</text>
+  <text x="74" y="504" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">rewrite profile + entitlements, re-sign Mach-Os</text>
 
-  <rect class="box" x="60" y="520" width="260" height="34" rx="5"/>
-  <text class="t h" x="74" y="537">sideload.py</text>
-  <text class="s d" x="180" y="537">CMS preflight, then install</text>
+  <rect x="60" y="520" width="260" height="34" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+  <text x="74" y="541" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="12.5" font-weight="600" fill="#e6edf3">sideload.py</text>
+  <text x="176" y="541" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">CMS preflight, then install</text>
 
   <path d="M190 464 v8" stroke="#484f58" stroke-width="1.5" marker-end="url(#a)"/>
   <path d="M190 512 v8" stroke="#484f58" stroke-width="1.5" marker-end="url(#a)"/>
 
-  <!-- ============ transport ============ -->
-  <g>
-    <rect class="box" x="410" y="120" width="176" height="76" rx="6"/>
-    <text class="t h" x="426" y="142">go-ios</text>
-    <text class="s d" x="426" y="159">lockdown / usbmux</text>
-    <text class="s d" x="426" y="173">apps, images, MJPEG</text>
-    <text class="s d" x="426" y="187">screenshot --stream</text>
-  </g>
+  <!-- ===================== transport ===================== -->
+  <rect x="410" y="120" width="176" height="76" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+  <text x="426" y="142" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="13" font-weight="600" fill="#e6edf3">go-ios</text>
+  <text x="426" y="159" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">lockdown / usbmux</text>
+  <text x="426" y="173" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">apps, images, devmode</text>
+  <text x="426" y="187" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">screenshot --stream</text>
 
-  <g>
-    <rect class="box" x="410" y="212" width="176" height="90" rx="6"/>
-    <text class="t h" x="426" y="234">pymobiledevice3</text>
-    <text class="s d" x="426" y="251">userspace tunnel</text>
-    <text class="s d" x="426" y="265">(no admin needed)</text>
-    <text class="s d" x="426" y="283">RemoteXPC · CoreDevice</text>
-  </g>
+  <rect x="410" y="212" width="176" height="90" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+  <text x="426" y="234" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="13" font-weight="600" fill="#e6edf3">pymobiledevice3</text>
+  <text x="426" y="251" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">userspace tunnel</text>
+  <text x="426" y="265" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">(no admin needed)</text>
+  <text x="426" y="283" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">RemoteXPC · CoreDevice</text>
 
   <rect x="410" y="318" width="176" height="96" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
-  <text class="t cap" x="426" y="338">CONSTRAINT</text>
-  <text class="s d" x="426" y="356">PyTCP is a process-global</text>
-  <text class="s d" x="426" y="370">singleton: one tunnel per</text>
-  <text class="s d" x="426" y="384">interpreter. Hence every</text>
-  <text class="s d" x="426" y="398">tool shells out instead</text>
-  <text class="s d" x="426" y="412">of importing.</text>
+  <text x="426" y="338" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="11" fill="#7d8590" letter-spacing="1.4">CONSTRAINT</text>
+  <text x="426" y="356" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">PyTCP is a process-global</text>
+  <text x="426" y="370" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">singleton: one tunnel per</text>
+  <text x="426" y="384" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">interpreter. Hence every</text>
+  <text x="426" y="398" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">tool shells out instead</text>
+  <text x="426" y="412" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">of importing.</text>
 
   <rect x="410" y="430" width="176" height="134" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
-  <text class="t cap" x="426" y="450">EGRESS</text>
-  <text class="s d" x="426" y="468">Only Apple, only these:</text>
-  <text class="s l" x="426" y="488">gs.apple.com</text>
-  <text class="s d" x="426" y="502">DDI personalisation</text>
-  <text class="s l" x="426" y="522">gsa.apple.com</text>
-  <text class="s d" x="426" y="536">Apple ID sign-in</text>
-  <text class="s l" x="426" y="556">developerservices2</text>
+  <text x="426" y="450" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="11" fill="#7d8590" letter-spacing="1.4">EGRESS</text>
+  <text x="426" y="468" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">Only Apple, only these:</text>
+  <text x="426" y="488" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="10.5" fill="#8b949e">gs.apple.com</text>
+  <text x="426" y="502" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">DDI personalisation</text>
+  <text x="426" y="522" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="10.5" fill="#8b949e">gsa.apple.com</text>
+  <text x="426" y="536" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">Apple ID sign-in</text>
+  <text x="426" y="556" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="10.5" fill="#8b949e">developerservices2</text>
 
-  <!-- host -> transport -->
   <path d="M340 168 H 404" stroke="#484f58" stroke-width="1.5" marker-end="url(#a)"/>
   <path d="M340 250 H 404" stroke="#484f58" stroke-width="1.5" marker-end="url(#a)"/>
   <path d="M340 470 H 404" stroke="#484f58" stroke-width="1.5" marker-end="url(#a)"/>
-
-  <!-- ============ device services ============ -->
   <path d="M592 250 H 654" stroke="#484f58" stroke-width="1.5" marker-end="url(#a)"/>
 
-  <g>
-    <rect class="box" x="664" y="76" width="476" height="86" rx="6"/>
-    <text class="t h" x="682" y="98">com.apple.accessibility.axAuditDaemon.remoteAXService</text>
-    <text class="s l" x="682" y="118">The element tree: captions, traits, identifiers, device settings.</text>
-    <text class="t ok" x="682" y="140">READ  no signing identity required</text>
-    <text class="t warn" x="682" y="156">PRESS  reaches only apps carrying task_for_pid-allow</text>
-  </g>
+  <!-- ===================== device services ===================== -->
+  <rect x="664" y="76" width="476" height="86" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+  <text x="682" y="98" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="12.5" font-weight="600" fill="#e6edf3">accessibility.axAuditDaemon.remoteAXService</text>
+  <text x="682" y="118" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8b949e">The element tree: captions, traits, identifiers, device settings.</text>
+  <text x="682" y="140" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="11.5" fill="#3fb950">READ   no signing identity required</text>
+  <text x="682" y="156" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="11.5" fill="#e3b341">PRESS  only apps carrying task_for_pid-allow</text>
 
-  <g>
-    <rect class="box" x="664" y="176" width="476" height="70" rx="6"/>
-    <text class="t h" x="682" y="198">com.apple.coredevice.appservice</text>
-    <text class="s l" x="682" y="218">Launch, uninstall, list processes.</text>
-    <text class="t ok" x="682" y="238">no signing identity required — this is why cross-app flows work</text>
-  </g>
+  <rect x="664" y="176" width="476" height="70" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+  <text x="682" y="198" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="12.5" font-weight="600" fill="#e6edf3">com.apple.coredevice.appservice</text>
+  <text x="682" y="218" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8b949e">Launch, uninstall, list processes.</text>
+  <text x="682" y="238" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="11.5" fill="#3fb950">no identity required — this is why cross-app flows work</text>
 
-  <g>
-    <rect class="box" x="664" y="260" width="476" height="66" rx="6"/>
-    <text class="t h" x="682" y="282">mobile_image_mounter · installation_proxy · afc · syslog_relay</text>
-    <text class="s l" x="682" y="302">DDI mounting, app install, file access, live logs.</text>
-    <text class="t ok" x="682" y="320">install needs a signed payload; the rest needs nothing</text>
-  </g>
+  <rect x="664" y="260" width="476" height="66" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+  <text x="682" y="282" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="12.5" font-weight="600" fill="#e6edf3">image_mounter · installation_proxy · afc · syslog</text>
+  <text x="682" y="302" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8b949e">DDI mounting, app install, file access, live logs.</text>
+  <text x="682" y="320" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="11.5" fill="#3fb950">install needs a signed payload; the rest needs nothing</text>
 
-  <g>
-    <rect class="box" x="664" y="340" width="476" height="60" rx="6"/>
-    <text class="t h" x="682" y="362">com.apple.instruments.dtservicehub</text>
-    <text class="s l" x="682" y="382">DVT: proclist, energy, graphics, network conditions, HAR.</text>
-    <text class="t warn" x="682" y="396">present but not yet wired into Filament</text>
-  </g>
+  <rect x="664" y="340" width="476" height="60" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+  <text x="682" y="362" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="12.5" font-weight="600" fill="#e6edf3">com.apple.instruments.dtservicehub</text>
+  <text x="682" y="382" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11.5" fill="#8b949e">DVT: proclist, energy, graphics, network conditions, HAR.</text>
+  <text x="682" y="396" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="11" fill="#e3b341">present, not yet wired into Filament</text>
 
   <rect x="664" y="414" width="476" height="150" rx="6" fill="#0d1117" stroke="#442726" stroke-width="1.5"/>
-  <text class="t cap" x="682" y="436" fill="#f85149">NOT PUBLISHED TO A WINDOWS HOST</text>
-  <text class="t l" x="682" y="458">coredevice.hid.universalhidservice</text>
-  <text class="t l" x="682" y="476">coredevice.hid.indigo · coredevice.displayservice</text>
-  <text class="s d" x="682" y="498">HID touch injection would tap any app with no certificate at all.</text>
-  <text class="s d" x="682" y="514">Absent from the RSD with AND without admin — an elevated trusted</text>
-  <text class="s d" x="682" y="530">tunnel returns the identical 73-service set, and dtuhidd is not</text>
-  <text class="s d" x="682" y="546">running. Believed macOS-only. Measured, not assumed.</text>
+  <text x="682" y="436" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="11" fill="#f85149" letter-spacing="1.4">NOT PUBLISHED TO A WINDOWS HOST</text>
+  <text x="682" y="458" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="11.5" fill="#8b949e">coredevice.hid.universalhidservice</text>
+  <text x="682" y="476" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="11.5" fill="#8b949e">coredevice.hid.indigo · coredevice.displayservice</text>
+  <text x="682" y="498" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">HID touch injection would tap any app with no certificate at all.</text>
+  <text x="682" y="514" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">Absent from the RSD with AND without admin — an elevated trusted</text>
+  <text x="682" y="530" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">tunnel returns the identical 73-service set, and dtuhidd is not</text>
+  <text x="682" y="546" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">running. Believed macOS-only. Measured, not assumed.</text>
 
-  <text class="s d" x="24" y="604">Every capability claim above was established by running the code against an iPhone 17 on iOS 26.6, not by reading documentation.</text>
+  <text x="24" y="604" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#6e7681">Every capability claim above was established by running the code against an iPhone 17 on iOS 26.6, not by reading documentation.</text>
 </svg>
