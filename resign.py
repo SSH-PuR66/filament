@@ -230,13 +230,15 @@ def verify_output(path):
 
 
 def resign(app, p12, password, profile, out, bundle_id=None, quiet=False,
-           timeout=1800):
+           timeout=1800, drop_extensions=False):
     """Run zsign. -> (ok, output_text)."""
     argv = [ZSIGN, "-k", p12, "-m", profile, "-o", out, "-f"]
     if password is not None:
         argv += ["-p", password]
     if bundle_id:
         argv += ["-b", bundle_id]
+    if drop_extensions:
+        argv.append("-E")
     if quiet:
         argv.append("-q")
     argv.append(app)
@@ -262,9 +264,13 @@ def main():
     ap.add_argument("--profile", help="provisioning profile (.mobileprovision)")
     ap.add_argument("--out", help="output .ipa (default: alongside the input)")
     ap.add_argument("--bundle-id", help="rewrite the bundle id while signing")
+    ap.add_argument("--drop-extensions", action="store_true",
+                    help="strip PlugIns before signing (zsign -E). A free-tier "
+                         "profile covers one app id, and every extension "
+                         "carries its own, so iOS rejects them unless removed")
     args = ap.parse_args()
     try:
-        sys.stdout.reconfigure(line_buffering=True)
+        sys.stdout.reconfigure(line_buffering=True, encoding="utf-8", errors="replace")
     except Exception:
         pass
 
@@ -295,7 +301,8 @@ def main():
     head("signing")
     say(INFO, "output", out)
     ok, text = resign(args.app, args.p12, args.password, args.profile, out,
-                      bundle_id=args.bundle_id)
+                      bundle_id=args.bundle_id,
+                      drop_extensions=args.drop_extensions)
     tail = [l for l in text.splitlines() if l.strip()][-6:]
     for line in tail:
         say(INFO, "zsign", line[:70])

@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="tests" src="https://img.shields.io/badge/tests-139%20passing-3fb950?style=flat-square&labelColor=161b22">
+  <img alt="tests" src="https://img.shields.io/badge/tests-146%20passing-3fb950?style=flat-square&labelColor=161b22">
   <img alt="platform" src="https://img.shields.io/badge/platform-Windows%2011-1f6feb?style=flat-square&labelColor=161b22">
   <img alt="admin" src="https://img.shields.io/badge/admin-not%20required-3fb950?style=flat-square&labelColor=161b22">
   <img alt="python" src="https://img.shields.io/badge/python-3.14-8b949e?style=flat-square&labelColor=161b22">
@@ -325,6 +325,41 @@ Verifies the profile's CMS signature against a digest-pinned Apple Root CA
 real reason instead of after a minute with `ApplicationVerificationFailed
 0xe8008001`.
 
+### `rcsign.py` — when zsign cannot seal the app
+
+```
+py rcsign.py app.ipa --pem key.pem --pem cert.pem --profile x.mobileprovision \
+   --bundle-id com.example.app.TEAMID --out app-signed.ipa
+py sideload.py install app-signed.ipa
+```
+
+Reached for exactly once so far, and it was needed. LiveContainer+SideStore
+embeds `SideStoreApp.framework`, whose executable is named `SideStore` and
+which carries four more frameworks *inside* it. zsign signs that layout
+top-down: it seals the parent's resources, then re-signs the children, so the
+seal is stale before the file is even zipped and iOS answers `0xe8008017`
+("a signed resource has been added, modified, or deleted"). go-ios's signer
+skips the framework entirely (`0xe800801c`, no signature at all). rcodesign —
+[apple-codesign](https://github.com/indygreg/apple-platform-rs), pinned by the
+SHA-256 published with its release — signs bottom-up and the same `.ipa`
+installed first time.
+
+The script does the four things around the signer that each cost an install
+attempt to learn: it works on a **short path** (the nested frameworks push
+`%TEMP%\<long>` past MAX_PATH and every tool in the chain fails quietly past
+it — Sideloadly mangles names to `%%1`, `%%2` for the same reason); it strips
+`PlugIns` unless told not to, because a free-tier profile covers one app id
+and every extension carries its own; it rewrites the bundle id to the one the
+profile names; and it hands rcodesign the entitlements by a **relative** path,
+because `--entitlements-xml-file C:\...` is parsed as scope `C` and the main
+binary ends up with no entitlements and `0xe8008015`.
+
+The identity can be the PEM pair Sideloadly keeps in `%APPDATA%\Sideloadly`
+(`key.pem`, `cert-<apple id>.pem`), which is the same certificate that signed
+whatever Sideloadly last installed. A p12 works too, but only one written with
+`openssl pkcs12 -export -legacy`; rcodesign 0.29 reports an OpenSSL 3 default
+p12 as a wrong password.
+
 ### `devmode_doctor.py` — why Developer Mode will not turn on
 
 ```
@@ -343,12 +378,17 @@ resign.py sign       →  app-resigned.ipa
 sideload.py install  →  onto the device
 ```
 
+If `sideload.py install` comes back with `0xe8008017` naming a framework,
+swap `resign.py sign` for `rcsign.py` — see above. The provisioning profile
+Sideloadly last used is at `%LOCALAPPDATA%\Temp\tmp*\%%1\%%1.app\embedded.mobileprovision`
+and is good for seven days from that install.
+
 ---
 
 ## Tests
 
 ```
-py test_filament.py                                 # 76 tests
+py test_filament.py                                 # 83 tests
 .\.signing-venv\Scripts\python.exe test_signing.py  # 63 tests
 ```
 
@@ -370,6 +410,26 @@ happy path proves almost nothing.
 ## Field notes
 
 Things that cost real time to discover, recorded so they cost no one else any.
+
+- **zsign seals a framework before it signs the frameworks nested inside it.**
+  Frameworks-in-frameworks are rare on iOS but LiveContainer+SideStore ships
+  one; the parent's `CodeResources` then hashes the children's pre-signing
+  bytes and iOS rejects the parent with `0xe8008017`. Ordinary `.app` →
+  `Frameworks/` layouts are fine, which is why this took a diff of the seal
+  against the files to see.
+- **go-ios `sign app` skips a framework whose executable name differs from the
+  framework name** (`SideStoreApp.framework/SideStore`), leaving it unsigned.
+- **rcodesign reads a Windows drive letter as a scope prefix.**
+  `--entitlements-xml-file C:\x\ent.plist` is scope `C`, path `\x\ent.plist`;
+  nothing complains and the main binary ships without entitlements. Pass the
+  file relative to the working directory.
+- **MAX_PATH is still 260 for these tools.** Under a long `%TEMP%` subfolder
+  the deepest SideStore bundle path is over the limit; `unzip`, `zipfile` and
+  zsign each stop at the boundary without an error you would notice.
+- **`sys.stdout.reconfigure(line_buffering=True)` is not enough on a cp1252
+  console.** An app label containing U+200E killed `launch.py --verify` after
+  the launch had already succeeded. Every tool now sets `encoding="utf-8",
+  errors="replace"` as well.
 
 - **`ios image list` reports mounts as INFO log lines**, not as a payload.
   Reading it as a payload says "not mounted" forever.

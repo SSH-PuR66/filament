@@ -252,8 +252,11 @@ def check_p12(path, password):
              "valid PKCS#12 archive"], {})
 
 
-def check_app(path):
-    """-> (fatal, info) for an .ipa or .app"""
+def check_app(path, will_sign=False):
+    """-> (fatal, info) for an .ipa or .app.
+
+    will_sign: a p12 and profile were supplied, so a missing embedded profile
+    is the expected starting state rather than a blocker."""
     fatal, info = [], {}
     if not os.path.exists(path):
         return ["no such file: %s" % path], {}
@@ -272,8 +275,11 @@ def check_app(path):
     info["signed"] = any("_CodeSignature" in n for n in names)
     info["profile"] = any(n.endswith("embedded.mobileprovision") for n in names)
     if not info["profile"]:
-        fatal.append("no embedded.mobileprovision inside - this app is not "
-                     "provisioned for any device and must be re-signed")
+        if will_sign:
+            info["profile"] = "none yet - signing will embed one"
+        else:
+            fatal.append("no embedded.mobileprovision inside - this app is not "
+                         "provisioned for any device and must be re-signed")
     return fatal, info
 
 
@@ -289,7 +295,7 @@ def run(args):
 
     if args.app:
         head("app")
-        f, i = check_app(args.app)
+        f, i = check_app(args.app, will_sign=bool(args.p12 and args.profile))
         fatal += f
         say(INFO, "path", args.app)
         for k, v in i.items():

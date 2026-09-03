@@ -414,7 +414,7 @@ def main():
                     help="print an example flow and exit")
     args = ap.parse_args()
     try:
-        sys.stdout.reconfigure(line_buffering=True)
+        sys.stdout.reconfigure(line_buffering=True, encoding="utf-8", errors="replace")
     except Exception:
         pass
 

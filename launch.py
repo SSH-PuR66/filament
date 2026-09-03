@@ -190,7 +190,7 @@ def main():
     ap.add_argument("--json", action="store_true", help="emit JSON")
     args = ap.parse_args()
     try:
-        sys.stdout.reconfigure(line_buffering=True)
+        sys.stdout.reconfigure(line_buffering=True, encoding="utf-8", errors="replace")
     except Exception:
         pass
 

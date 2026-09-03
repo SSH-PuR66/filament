@@ -603,13 +603,88 @@ def test_resign():
               "found %s, pinned %s" % (ver, R.ZSIGN_VERSION))
 
 
+# ---------------------------------------------------------------- rcsign
+
+def test_rcsign():
+    """rcsign.py exists because of LiveContainer+SideStore on 2026-09-03: zsign
+    sealed SideStoreApp.framework before re-signing the frameworks nested inside
+    it (0xe8008017), go-ios skipped that framework (0xe800801c), and rcodesign
+    only got it right once the entitlements path was RELATIVE - it read the
+    "C:" of an absolute Windows path as a scope selector and attached the
+    entitlements to nothing (0xe8008015)."""
+    import plistlib
+    import zipfile
+    import rcsign as RC
+    section("rcsign - prepare/repack on a fake ipa")
+    tmp = tempfile.mkdtemp(prefix="rcs-t-")
+    ipa = os.path.join(tmp, "in.ipa")
+    with zipfile.ZipFile(ipa, "w") as z:
+        z.writestr("Payload/Demo.app/Info.plist", plistlib.dumps(
+            {"CFBundleIdentifier": "com.example.demo", "CFBundleExecutable": "Demo"}))
+        z.writestr("Payload/Demo.app/Demo", b"\xcf\xfa\xed\xfe fake")
+        z.writestr("Payload/Demo.app/PlugIns/X.appex/Info.plist", plistlib.dumps(
+            {"CFBundleIdentifier": "com.example.demo.X"}))
+    prof = os.path.join(tmp, "p.mobileprovision")
+    body = plistlib.dumps({
+        "TeamIdentifier": ["TEAM1"],
+        "Entitlements": {"application-identifier": "TEAM1.com.example.demo.TEAM1",
+                         "get-task-allow": True}})
+    open(prof, "wb").write(b"\x30\x82CMSjunk" + body + b"\x00trailer")
+
+    work = os.path.join(tmp, "w1"); os.makedirs(work)
+    try:
+        RC.prepare(work, ipa, prof)
+        check("mismatched app id without --bundle-id is refused", False)
+    except ValueError as exc:
+        check("mismatched app id without --bundle-id is refused",
+              "--bundle-id" in str(exc), str(exc))
+
+    work = os.path.join(tmp, "w2"); os.makedirs(work)
+    app, ent_rel = RC.prepare(work, ipa, prof, bundle_id="com.example.demo.TEAM1")
+    check("PlugIns are stripped", not os.path.isdir(os.path.join(app, "PlugIns")))
+    info = plistlib.load(open(os.path.join(app, "Info.plist"), "rb"))
+    check("bundle id is rewritten", info["CFBundleIdentifier"] == "com.example.demo.TEAM1")
+    check("profile is embedded", os.path.exists(os.path.join(app, "embedded.mobileprovision")))
+    ent = plistlib.load(open(os.path.join(work, ent_rel), "rb"))
+    check("entitlements come from the profile and the path is relative",
+          ent.get("application-identifier") == "TEAM1.com.example.demo.TEAM1"
+          and not os.path.isabs(ent_rel) and ":" not in ent_rel)
+
+    out = os.path.join(tmp, "out.ipa")
+    RC.repack(work, out)
+    names = zipfile.ZipFile(out).namelist()
+    check("repack keeps Payload/ layout, profile in, extensions out",
+          all(n.startswith("Payload/") for n in names)
+          and "Payload/Demo.app/embedded.mobileprovision" in names
+          and not any("/PlugIns/" in n for n in names))
+
+    section("rcsign - rcodesign invocation")
+    seen = {}
+    class P:
+        returncode = 0; stdout = "ok"; stderr = ""
+    def fake_run(argv, **kw):
+        seen["argv"] = argv; seen["cwd"] = kw.get("cwd"); return P()
+    real = RC.subprocess.run
+    RC.subprocess.run = fake_run
+    try:
+        ok, _ = RC.sign(work, app, ent_rel, pems=["k.pem", "c.pem"], rcodesign="rcodesign.exe")
+    finally:
+        RC.subprocess.run = real
+    argv = seen.get("argv") or []
+    i = argv.index("--entitlements-xml-file") if "--entitlements-xml-file" in argv else -1
+    check("entitlements are passed by a relative path from the work dir",
+          ok and i > 0 and argv[i + 1] == ent_rel and seen.get("cwd") == work
+          and not os.path.isabs(argv[-1]))
+
+
 def main():
     print("\n  Filament regression tests")
     print("  " + "=" * 52)
     for fn in (test_stream, test_bringup, test_auth, test_argv,
                test_ios_write, test_image_mounted,
                test_sideload_signing, test_touch_coordinates,
-               test_touch_report, test_touch_gate_detection, test_resign):
+               test_touch_report, test_touch_gate_detection, test_resign,
+               test_rcsign):
         try:
             fn()
         except Exception as exc:
