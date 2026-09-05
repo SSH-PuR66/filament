@@ -39,6 +39,7 @@ What this file adds beyond calling zsign:
 import argparse
 import hashlib
 import os
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -102,9 +103,12 @@ def zsign_version():
                       "or download zsign-windows-x64.zip from "
                       "github.com/zhlynn/zsign/releases" % ZSIGN)
     try:
+        child_env = os.environ.copy()
+        child_env.pop("FILAMENT_P12_PASSWORD", None)
+        child_env.pop("P12_PASSWORD", None)
         p = subprocess.run([ZSIGN, "-v"], capture_output=True, text=True,
                            timeout=30, creationflags=NO_WINDOW,
-                           encoding="utf-8", errors="replace")
+                           encoding="utf-8", errors="replace", env=child_env)
     except Exception as exc:
         return None, "could not run zsign: %s" % exc
     out = ((p.stdout or "") + (p.stderr or "")).strip()
@@ -229,12 +233,32 @@ def verify_output(path):
     return problems, info
 
 
-def resign(app, p12, password, profile, out, bundle_id=None, quiet=False,
-           timeout=1800, drop_extensions=False):
-    """Run zsign. -> (ok, output_text)."""
-    argv = [ZSIGN, "-k", p12, "-m", profile, "-o", out, "-f"]
-    if password is not None:
-        argv += ["-p", password]
+def _stage_inputs(app, p12, password, profile):
+    """Snapshot every signer input into one private temporary directory."""
+    import sideload as S
+
+    work = S._private_tempdir()
+    try:
+        args = argparse.Namespace(
+            app=app, p12=p12, p12password=password, profile=profile,
+            install=True)
+        return work, S._snapshot_install_args(args, work)
+    except Exception:
+        shutil.rmtree(work, ignore_errors=True)
+        raise
+
+
+def _resign_staged(app, p12, password, profile, out, work,
+                   bundle_id=None, quiet=False, timeout=1800,
+                   drop_extensions=False):
+    """Run zsign against already-snapshotted inputs."""
+    import sideload as S
+
+    try:
+        signing_p12 = S._passwordless_p12_copy(p12, password, work)
+    except Exception as exc:
+        return False, "could not stage the signing identity safely: %s" % exc
+    argv = [ZSIGN, "-k", signing_p12, "-m", profile, "-o", out, "-f"]
     if bundle_id:
         argv += ["-b", bundle_id]
     if drop_extensions:
@@ -243,14 +267,53 @@ def resign(app, p12, password, profile, out, bundle_id=None, quiet=False,
         argv.append("-q")
     argv.append(app)
     try:
+        child_env = os.environ.copy()
+        child_env.pop("FILAMENT_P12_PASSWORD", None)
+        child_env.pop("P12_PASSWORD", None)
         p = subprocess.run(argv, capture_output=True, text=True,
                            timeout=timeout, creationflags=NO_WINDOW,
-                           encoding="utf-8", errors="replace")
+                           encoding="utf-8", errors="replace", env=child_env)
     except subprocess.TimeoutExpired:
         return False, "zsign timed out after %ss" % timeout
     except Exception as exc:
         return False, str(exc)
     return p.returncode == 0, ((p.stdout or "") + (p.stderr or "")).strip()
+
+
+def _validate_staged(app, p12, password, profile):
+    """Fail closed on the exact snapshots that will be handed to zsign."""
+    import sideload as S
+
+    blockers = []
+    app_fatal, _ = S.check_app(app, will_sign=True)
+    blockers.extend(app_fatal)
+    p12_fatal, _ = S.check_p12(p12, password)
+    blockers.extend(p12_fatal)
+    profile_fatal, _, _ = S.check_profile(profile, None)
+    blockers.extend(profile_fatal)
+    match_fatal, _ = S.check_identity_match(p12, password, profile)
+    blockers.extend(match_fatal)
+    return blockers
+
+
+def resign(app, p12, password, profile, out, bundle_id=None, quiet=False,
+           timeout=1800, drop_extensions=False):
+    """Run zsign with immutable inputs and no password in its argv/env."""
+    try:
+        work, staged = _stage_inputs(app, p12, password, profile)
+    except Exception as exc:
+        return False, "could not snapshot signing inputs: %s" % exc
+    try:
+        blockers = _validate_staged(
+            staged.app, staged.p12, password, staged.profile)
+        if blockers:
+            return False, "staged signing preflight failed: %s" % blockers[0]
+        return _resign_staged(
+            staged.app, staged.p12, password, staged.profile, out, work,
+            bundle_id=bundle_id, quiet=quiet, timeout=timeout,
+            drop_extensions=drop_extensions)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
 
 
 def main():
@@ -259,8 +322,13 @@ def main():
     ap.add_argument("mode", choices=("check", "sign"))
     ap.add_argument("app", help=".ipa (or .app bundle) to re-sign")
     ap.add_argument("--p12", help="signing identity (PKCS#12)")
-    ap.add_argument("--p12password", dest="password", default="",
-                    help="password for the p12")
+    passwords = ap.add_mutually_exclusive_group()
+    passwords.add_argument(
+        "--p12password", dest="password", default="",
+        help="password for the p12 (legacy; visible in this process argv)")
+    passwords.add_argument(
+        "--p12password-stdin", action="store_true",
+        help="read one p12 password line from stdin")
     ap.add_argument("--profile", help="provisioning profile (.mobileprovision)")
     ap.add_argument("--out", help="output .ipa (default: alongside the input)")
     ap.add_argument("--bundle-id", help="rewrite the bundle id while signing")
@@ -269,6 +337,8 @@ def main():
                          "profile covers one app id, and every extension "
                          "carries its own, so iOS rejects them unless removed")
     args = ap.parse_args()
+    if args.p12password_stdin:
+        args.password = sys.stdin.readline().rstrip("\r\n")
     try:
         sys.stdout.reconfigure(line_buffering=True, encoding="utf-8", errors="replace")
     except Exception:

@@ -25,13 +25,13 @@ zipfile all fail quietly past MAX_PATH on Windows:
 Usage:
   py rcsign.py app.ipa --pem key.pem --pem cert.pem --profile x.mobileprovision \
       --bundle-id com.example.app.TEAMID --out app-signed.ipa
-  py rcsign.py app.ipa --p12 id.p12 --p12password ... --profile x.mobileprovision
+  echo password | py rcsign.py app.ipa --p12 id.p12 --p12password-stdin --profile x.mobileprovision
 
 The identity can be PEM (a key file and a cert file, e.g. what Sideloadly
 keeps in %APPDATA%\\Sideloadly) or a p12. Note rcodesign 0.29 only opens p12
-files written with the legacy (RC2/3DES, SHA-1 MAC) parameters; an OpenSSL 3
-default p12 fails with "incorrect password given when decrypting PFX data".
-Use `openssl pkcs12 -export -legacy` or pass PEMs.
+files written with the legacy (RC2/3DES, SHA-1 MAC) parameters reliably. This
+wrapper therefore decodes a p12 locally and gives rcodesign a short-lived,
+owner-only passwordless copy, then deletes it when the child returns.
 """
 import argparse
 import os
@@ -65,6 +65,25 @@ def read_profile(path):
     return plistlib.loads(b[s:e])
 
 
+def _private_copy(source, work, suffix):
+    """Copy one sensitive input to a random owner-only path."""
+    fd, target = tempfile.mkstemp(prefix="identity-", suffix=suffix, dir=work)
+    os.close(fd)
+    try:
+        shutil.copyfile(source, target)
+        try:
+            os.chmod(target, 0o600)
+        except OSError:
+            pass
+        return target
+    except Exception:
+        try:
+            os.unlink(target)
+        except OSError:
+            pass
+        raise
+
+
 def app_dir(payload):
     apps = [d for d in os.listdir(payload) if d.endswith(".app")]
     if len(apps) != 1:
@@ -91,8 +110,18 @@ def prepare(work, ipa, profile, bundle_id=None, keep_extensions=False):
         info["CFBundleIdentifier"] = bundle_id
         with open(info_path, "wb") as f:
             plistlib.dump(info, f)
-    prof = read_profile(profile)
-    shutil.copyfile(profile, os.path.join(app, "embedded.mobileprovision"))
+    # Read entitlements and embed bytes from the same immutable copy. Reading
+    # the source and then reopening it for copy left a profile-swap window.
+    profile_copy = _private_copy(profile, work, ".mobileprovision")
+    try:
+        prof = read_profile(profile_copy)
+        shutil.copyfile(profile_copy,
+                        os.path.join(app, "embedded.mobileprovision"))
+    finally:
+        try:
+            os.unlink(profile_copy)
+        except OSError:
+            pass
     ent = dict(prof.get("Entitlements", {}))
     want = ent.get("application-identifier", "")
     have = info["CFBundleIdentifier"]
@@ -122,20 +151,42 @@ def sign(work, app, ent_rel, pems=(), p12=None, p12password=None,
     exe = rcodesign or find_rcodesign()
     if not exe:
         return False, "rcodesign not found - unpack the apple-codesign release into tools/rcodesign or set FILAMENT_RCODESIGN_EXE"
-    argv = [exe, "sign"]
-    for p in pems:
-        argv += ["--pem-file", os.path.abspath(p)]
-    if p12:
-        argv += ["--p12-file", os.path.abspath(p12)]
-        if p12password is not None:
-            argv += ["--p12-password", p12password]
-    argv += ["--entitlements-xml-file", ent_rel,
-             os.path.relpath(app, work).replace(os.sep, "/")]
+    staged = []
+    identity_work = None
     try:
-        p = subprocess.run(argv, cwd=work, capture_output=True, text=True,
-                           timeout=timeout, encoding="utf-8", errors="replace")
+        import sideload as S
+        identity_work = S._private_tempdir()
+        argv = [exe, "sign"]
+        for pem in pems:
+            pem_copy = _private_copy(pem, identity_work, ".pem")
+            staged.append(pem_copy)
+            argv += ["--pem-file", os.path.abspath(pem_copy)]
+        if p12:
+            p12_copy = S._passwordless_p12_copy(
+                p12, p12password, identity_work)
+            staged.append(p12_copy)
+            argv += ["--p12-file", os.path.abspath(p12_copy)]
+        argv += ["--entitlements-xml-file", ent_rel,
+                 os.path.relpath(app, work).replace(os.sep, "/")]
+        child_env = os.environ.copy()
+        child_env.pop("FILAMENT_P12_PASSWORD", None)
+        child_env.pop("P12_PASSWORD", None)
+        p = subprocess.run(
+            argv, cwd=work, capture_output=True, text=True,
+            timeout=timeout, encoding="utf-8", errors="replace",
+            env=child_env)
     except subprocess.TimeoutExpired:
         return False, "rcodesign timed out after %ss" % timeout
+    except Exception as exc:
+        return False, "could not stage or run rcodesign: %s" % exc
+    finally:
+        for path in staged:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+        if identity_work is not None:
+            shutil.rmtree(identity_work, ignore_errors=True)
     return p.returncode == 0, ((p.stdout or "") + (p.stderr or "")).strip()
 
 
@@ -146,7 +197,12 @@ def short_workdir():
     root = os.environ.get("FILAMENT_WORK") or os.path.join(
         os.path.splitdrive(HERE)[0] + os.sep, "Users", os.environ.get("USERNAME", "u"), ".rcs")
     os.makedirs(root, exist_ok=True)
-    return tempfile.mkdtemp(prefix="s", dir=root)
+    work = tempfile.mkdtemp(prefix="s", dir=root)
+    try:
+        os.chmod(work, 0o700)
+    except OSError:
+        pass
+    return work
 
 
 def main():
@@ -156,12 +212,20 @@ def main():
     ap.add_argument("--pem", action="append", default=[],
                     help="PEM file (repeat: key file, then cert file)")
     ap.add_argument("--p12", help="PKCS#12 identity (legacy encryption only)")
-    ap.add_argument("--p12password", default=None)
+    passwords = ap.add_mutually_exclusive_group()
+    passwords.add_argument(
+        "--p12password", default=None,
+        help="legacy form; password is visible in this process argv")
+    passwords.add_argument(
+        "--p12password-stdin", action="store_true",
+        help="read one p12 password line from stdin")
     ap.add_argument("--bundle-id", help="rewrite CFBundleIdentifier first")
     ap.add_argument("--keep-extensions", action="store_true",
                     help="do not strip PlugIns")
     ap.add_argument("--out", help="output .ipa (default: <input>-rcsigned.ipa)")
     args = ap.parse_args()
+    if args.p12password_stdin:
+        args.p12password = sys.stdin.readline().rstrip("\r\n")
     try:
         sys.stdout.reconfigure(line_buffering=True, encoding="utf-8", errors="replace")
     except Exception:

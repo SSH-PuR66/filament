@@ -19,6 +19,7 @@ Talks to the device through two verified paths:
 import base64
 import html
 import json
+import math
 import os
 import queue
 import secrets
@@ -1159,40 +1160,215 @@ def press_ui(identifier, limit=120, timeout=200):
 
 APPLEID_PY = os.path.join(HERE, "appleid.py")
 SIGNING_PYTHON = os.path.join(HERE, ".signing-venv", "Scripts", "python.exe")
+SIDELOAD_PY = os.path.join(HERE, "sideload.py")
+try:
+    with open(os.path.join(HERE, ".signing", "identity-config.json"), encoding="utf-8") as _fh:
+        _identity_config = json.load(_fh)
+    if not isinstance(_identity_config, dict) or not all(
+            isinstance(value, str) for value in _identity_config.values()):
+        raise ValueError("identity-config.json must contain string paths only")
+except FileNotFoundError:
+    _identity_config = {}
+
+
+def _identity_path(env_key, config_key, default):
+    value = os.environ.get(env_key) or _identity_config.get(config_key) or default
+    return os.path.abspath(os.path.join(HERE, value))
+
+
+SIGNING_IDENTITY_DIR = os.environ.get(
+    "FILAMENT_IDENTITY_DIR", os.path.join(HERE, ".signing", "identity"))
+SIGNING_P12 = _identity_path(
+    "FILAMENT_P12", "p12", os.path.join(SIGNING_IDENTITY_DIR, "identity.p12"))
+SIGNING_PEM_KEY = _identity_path(
+    "FILAMENT_PEM_KEY", "pem_key", os.path.join(SIGNING_IDENTITY_DIR, "key.pem"))
+SIGNING_PEM_CERT = _identity_path(
+    "FILAMENT_PEM_CERT", "pem_cert", os.path.join(SIGNING_IDENTITY_DIR, "cert.pem"))
+SIGNING_PROFILE = _identity_path(
+    "FILAMENT_PROFILE", "profile",
+    os.path.join(SIGNING_IDENTITY_DIR, "identity.mobileprovision"))
+# Keep the password in this process, but do not leave it in the environment
+# inherited by every go-ios/helper subprocess Filament starts.
+SIGNING_P12_PASSWORD = os.environ.pop("FILAMENT_P12_PASSWORD", "filament")
+os.environ.pop("P12_PASSWORD", None)
+SIGNING_SESSION = os.path.join(HERE, ".signing", "session.json")
+
+
+def _saved_signing_session_status():
+    """Validate the saved Apple session without returning credential values."""
+    status = {
+        "valid": False,
+        "locally_nonexpired": False,
+        "session_file": os.path.abspath(SIGNING_SESSION),
+    }
+    try:
+        with open(SIGNING_SESSION, encoding="utf-8") as fh:
+            session = json.load(fh)
+    except FileNotFoundError:
+        status["reason"] = "saved session is missing"
+        return status
+    except (OSError, ValueError, TypeError) as exc:
+        status["reason"] = "saved session is unreadable: %s" % exc
+        return status
+    if not isinstance(session, dict):
+        status["reason"] = "saved session is not a JSON object"
+        return status
+    for field in ("token", "adsid", "apple_id"):
+        if not isinstance(session.get(field), str) or not session[field].strip():
+            status["reason"] = "saved session has no valid %s" % field
+            return status
+    expires = session.get("expires")
+    if (isinstance(expires, bool) or not isinstance(expires, (int, float))
+            or not math.isfinite(expires)):
+        status["reason"] = "saved session has no finite numeric expiry"
+        return status
+    status["expires"] = expires
+    if expires <= time.time():
+        status["reason"] = "saved session is expired"
+        return status
+    status.update({
+        "valid": True,
+        "locally_nonexpired": True,
+        "has_token": True,
+        "has_adsid": True,
+        "has_apple_id": True,
+    })
+    return status
 
 
 def signing_status(timeout=90):
-    """Is there a usable signing identity? -> dict. Never raises.
+    """Is the complete locally provable signing chain usable? Never raises.
 
     appleid.py lives in its own virtualenv because the anisette provider
     pulls a CPU emulator that has no business in the main interpreter. If
     that venv is missing the answer is "not set up", which is a different
-    and more actionable statement than "not signed in".
+    and more actionable statement than "not signed in". `supported` and
+    `performs_signing` describe what Filament implements; `ready` is true only
+    when the signer, attached device, identity and profile all pass
+    their independent checks. Unknown evidence is a blocker, never a pass.
+    An Apple login is needed to mint/renew an identity, not to use an existing
+    unexpired certificate and provisioning profile for offline signing.
     """
+    report = {
+        "supported": True,
+        "performs_signing": True,
+        "bypasses_code_signing": False,
+        "readiness_scope": "local_preflight",
+        "ready": False,
+        "blockers": [],
+        "warnings": [],
+        "session": _saved_signing_session_status(),
+        "identity": None,
+    }
+    blockers = report["blockers"]
+
     if not os.path.exists(APPLEID_PY):
-        return {"ready": False, "reason": "appleid.py is missing"}
+        report["warnings"].append("appleid.py is missing; new identities cannot be created")
     if not os.path.exists(SIGNING_PYTHON):
-        return {"ready": False, "reason": "the signing venv is not set up",
-                "hint": "python -m venv .signing-venv && "
-                        ".signing-venv\\Scripts\\pip install anisette srp "
-                        "cryptography requests"}
-    try:
-        p = subprocess.run([SIGNING_PYTHON, APPLEID_PY, "status"],
-                           capture_output=True, text=True, timeout=timeout,
-                           creationflags=NO_WINDOW, encoding="utf-8",
-                           errors="replace")
-    except subprocess.TimeoutExpired:
-        return {"ready": False, "reason": "checking the signing state timed out"}
-    except Exception as exc:
-        return {"ready": False, "reason": str(exc)}
+        blockers.append("the signing venv is not set up")
+        report["hint"] = ("python -m venv .signing-venv && "
+                          ".signing-venv\\Scripts\\pip install anisette srp "
+                          "cryptography requests")
+    if not os.path.exists(SIDELOAD_PY):
+        blockers.append("sideload.py is missing")
 
-    out = ((p.stdout or "") + (p.stderr or "")).strip()
-    signed_in = "token            valid" in out
-    return {"ready": signed_in, "output": out[-3000:],
-            "reason": None if signed_in else "no valid Apple ID session"}
+    if os.path.exists(SIGNING_PYTHON) and os.path.exists(APPLEID_PY):
+        try:
+            p = subprocess.run([SIGNING_PYTHON, APPLEID_PY, "status"],
+                               capture_output=True, text=True, timeout=timeout,
+                               creationflags=NO_WINDOW, encoding="utf-8",
+                               errors="replace")
+            out = ((p.stdout or "") + (p.stderr or "")).strip()
+            session_valid = (
+                p.returncode == 0
+                and report["session"].get("locally_nonexpired") is True)
+            report["session"]["valid"] = session_valid
+            report["session"]["status_exit_code"] = p.returncode
+            report["output"] = out[-3000:]
+            if not session_valid:
+                report["warnings"].append("no valid Apple ID session; identity creation/renewal needs login")
+        except subprocess.TimeoutExpired:
+            report["warnings"].append("checking the Apple ID session timed out")
+        except Exception as exc:
+            report["warnings"].append("could not check the Apple ID session: %s" % exc)
 
+    if os.path.exists(SIGNING_PYTHON) and os.path.exists(SIDELOAD_PY):
+        argv = [SIGNING_PYTHON, SIDELOAD_PY, "identity-status", "--json",
+                "--profile", SIGNING_PROFILE, "--p12password-stdin"]
+        if not os.path.isfile(SIGNING_P12) and os.path.isfile(SIGNING_PEM_KEY) and os.path.isfile(SIGNING_PEM_CERT):
+            argv += ["--pem-key", SIGNING_PEM_KEY, "--pem-cert", SIGNING_PEM_CERT]
+        else:
+            argv += ["--p12", SIGNING_P12]
+        child_env = os.environ.copy()
+        child_env.pop("FILAMENT_P12_PASSWORD", None)
+        child_env.pop("P12_PASSWORD", None)
+        try:
+            p = subprocess.run(argv, capture_output=True, text=True,
+                               timeout=timeout, creationflags=NO_WINDOW,
+                               encoding="utf-8", errors="replace",
+                               env=child_env,
+                               input=SIGNING_P12_PASSWORD + "\n")
+            try:
+                identity = json.loads((p.stdout or "").strip())
+                if not isinstance(identity, dict):
+                    raise ValueError("readiness output is not an object")
+            except (ValueError, TypeError) as exc:
+                identity = None
+                blockers.append("could not parse identity readiness: %s" % exc)
+                detail = ((p.stderr or "") + (p.stdout or "")).strip()
+                if detail:
+                    report["identity_output"] = detail[-1000:]
+            report["identity"] = identity
+            if identity is not None:
+                contract_ok = (
+                    identity.get("supported") is True
+                    and identity.get("performs_signing") is True
+                    and identity.get("bypasses_code_signing") is False
+                    and identity.get("readiness_scope") == "local_preflight"
+                    and isinstance(identity.get("ready"), bool)
+                    and isinstance(identity.get("blockers"), list)
+                    and all(isinstance(item, str)
+                            for item in identity.get("blockers"))
+                    and isinstance(identity.get("warnings"), list)
+                    and all(isinstance(item, str)
+                            for item in identity.get("warnings"))
+                    and isinstance(identity.get("evidence"), dict)
+                    and identity["ready"] == (not identity["blockers"])
+                    and ((identity.get("reason") is None
+                          and identity["ready"] is True)
+                         or (isinstance(identity.get("reason"), str)
+                             and bool(identity["reason"])
+                             and identity["ready"] is False)))
+                if not contract_ok:
+                    blockers.append("identity readiness contract is invalid")
+                else:
+                    blockers.extend(identity["blockers"])
+                    report["warnings"].extend(identity["warnings"])
+                    if ((identity["ready"] is True and p.returncode != 0)
+                            or (identity["ready"] is False
+                                and p.returncode == 0)):
+                        blockers.append(
+                            "identity readiness result and exit code disagree")
+                    elif p.returncode not in (0, 1):
+                        blockers.append(
+                            "identity readiness exited with code %s"
+                            % p.returncode)
+        except subprocess.TimeoutExpired:
+            blockers.append("checking the signing identity timed out")
+        except Exception as exc:
+            blockers.append("could not check the signing identity: %s" % exc)
 
-SIDELOAD_PY = os.path.join(HERE, "sideload.py")
+    identity_ready = bool(
+        isinstance(report["identity"], dict)
+        and report["identity"].get("ready") is True
+        and "identity readiness contract is invalid" not in blockers)
+    report["identity_creation_ready"] = bool(
+        report["session"].get("valid") and os.path.isfile(APPLEID_PY)
+        and os.path.isfile(SIGNING_PYTHON))
+    report["ready"] = bool(identity_ready and not blockers)
+    report["reason"] = None if report["ready"] else (
+        blockers[0] if blockers else "signing readiness could not be proven")
+    return report
 
 
 def sideload_check(app=None, p12=None, p12password=None, profile=None,
@@ -1210,28 +1386,44 @@ def sideload_check(app=None, p12=None, p12password=None, profile=None,
     """
     if not os.path.exists(SIDELOAD_PY):
         return {"ok": False, "output": "", "error": "sideload.py is missing"}
+    if p12password is not None and not isinstance(p12password, str):
+        return {"ok": False, "output": "",
+                "error": "p12password must be a string"}
 
     argv = [PYTHON, SIDELOAD_PY, "install" if install else "check"]
     for path, flag in ((app, None), (p12, "--p12"), (profile, "--profile")):
         if not path:
             continue
-        if not os.path.exists(path):
+        if not isinstance(path, (str, bytes, os.PathLike)):
+            return {"ok": False, "output": "",
+                    "error": "sideload paths must be strings"}
+        try:
+            present = os.path.exists(path)
+        except (OSError, TypeError, ValueError):
+            present = False
+        if not present:
             return {"ok": False, "output": "",
                     "error": "no such file: %s" % path}
         if flag:
             argv += [flag, path]
         else:
             argv.append(path)
-    if p12password:
-        argv += ["--p12password", p12password]
+    child_input = None
+    if p12password is not None:
+        argv += ["--p12password-stdin"]
+        child_input = p12password + "\n"
     if len(argv) <= 3:
         return {"ok": False, "output": "",
                 "error": "give an app, a profile, or a p12 to check"}
 
     try:
+        child_env = os.environ.copy()
+        child_env.pop("FILAMENT_P12_PASSWORD", None)
+        child_env.pop("P12_PASSWORD", None)
         p = subprocess.run(argv, capture_output=True, text=True,
                            timeout=timeout, creationflags=NO_WINDOW,
-                           encoding="utf-8", errors="replace")
+                           encoding="utf-8", errors="replace",
+                           env=child_env, input=child_input)
     except subprocess.TimeoutExpired:
         return {"ok": False, "output": "", "error": "timed out after %ss" % timeout}
     except Exception as exc:
@@ -1240,6 +1432,32 @@ def sideload_check(app=None, p12=None, p12password=None, profile=None,
     out = ((p.stdout or "") + (p.stderr or "")).strip()
     return {"ok": p.returncode == 0, "output": out[-6000:],
             "error": None if p.returncode == 0 else "preflight found blockers"}
+
+
+def _parse_sideload_request(body):
+    """Validate JSON types before any value reaches filesystem/process APIs."""
+    if not isinstance(body, dict):
+        return None, "request body must be a JSON object"
+    parsed = {}
+    for name in ("app", "p12", "profile"):
+        value = body.get(name)
+        if value is None or value == "":
+            parsed[name] = None
+        elif not isinstance(value, str):
+            return None, "%s must be a string" % name
+        elif "\x00" in value:
+            return None, "%s contains a null byte" % name
+        else:
+            parsed[name] = value.strip() or None
+    password = body.get("p12password")
+    if password is not None and not isinstance(password, str):
+        return None, "p12password must be a string"
+    parsed["p12password"] = password or None
+    install = body.get("install", False)
+    if not isinstance(install, bool):
+        return None, "install must be a boolean"
+    parsed["install"] = install
+    return parsed, None
 
 
 def read_ui(limit=120, timeout=120):
@@ -1421,14 +1639,14 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length) or b"{}")
         except ValueError:
             body = {}
+        if not isinstance(body, dict):
+            return self._send(400, {"error": "request body must be a JSON object"})
 
         if u.path == "/api/sideload":
-            return self._send(200, sideload_check(
-                app=(body.get("app") or "").strip() or None,
-                p12=(body.get("p12") or "").strip() or None,
-                p12password=(body.get("p12password") or "").strip() or None,
-                profile=(body.get("profile") or "").strip() or None,
-                install=bool(body.get("install"))))
+            request, error = _parse_sideload_request(body)
+            if error:
+                return self._send(400, {"error": error})
+            return self._send(200, sideload_check(**request))
 
         if u.path == "/api/ui/press":
             after, err = press_ui(body.get("identifier", ""))
