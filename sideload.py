@@ -546,17 +546,17 @@ def check_app(path, will_sign=False):
     if os.path.isdir(path):
         info["kind"] = "app bundle"
         info["signed"] = os.path.isdir(os.path.join(path, "_CodeSignature"))
-        info["profile"] = os.path.exists(os.path.join(path, "embedded.mobileprovision"))
-        return fatal, info
-    try:
-        z = zipfile.ZipFile(path)
-    except Exception as exc:
-        return ["not a readable .ipa: %s" % exc], {}
-    names = z.namelist()
-    info["kind"] = "ipa"
-    info["entries"] = len(names)
-    info["signed"] = any("_CodeSignature" in n for n in names)
-    info["profile"] = any(n.endswith("embedded.mobileprovision") for n in names)
+        info["profile"] = os.path.isfile(os.path.join(path, "embedded.mobileprovision"))
+    else:
+        try:
+            with zipfile.ZipFile(path) as archive:
+                names = archive.namelist()
+        except Exception as exc:
+            return ["not a readable .ipa: %s" % exc], {}
+        info["kind"] = "ipa"
+        info["entries"] = len(names)
+        info["signed"] = any("_CodeSignature" in n for n in names)
+        info["profile"] = any(n.endswith("embedded.mobileprovision") for n in names)
     if not info["profile"]:
         if will_sign:
             info["profile"] = "none yet - signing will embed one"

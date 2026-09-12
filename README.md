@@ -353,6 +353,26 @@ under `pem_key`, `pem_cert`, and `profile`. Paths in that file may be relative
 to the Filament directory. An ephemeral p12 is derived in private storage;
 the original PEM files are never changed.
 
+The **Install** tab now uses that configured identity directly. Choose a local
+app, keep **Use Filament's configured identity** selected, and select **Check
+this app**. No certificate paths or configured password need to be copied into
+the browser. The alternative signing method accepts custom files or checks an
+already signed package as-is. That package check looks for signing material;
+it does not independently verify an embedded code signature. iOS decides
+whether the installed app is accepted and can run.
+
+The panel separates device connection, Developer Mode, and local identity
+readiness, and provides links to the official SideStore and LiveContainer
+installation guides. Those routes are guidance, not an automated SideStore
+setup or evidence that a LiveContainer guest app will work.
+
+An app check is tied to the selected input values and the observed device.
+Changing a path, password, signing method, or installation route clears it.
+A disconnect, changed device/OS/Developer Mode, failed device poll, device
+observation older than 15 seconds, or check older than two minutes disables
+**Install on iPhone**. These are UI freshness checks; the existing install
+command also copies and validates its inputs again before invoking go-ios.
+
 By default the readiness check uses the files written by `appleid.py identity`
 under `.signing/identity`. Existing identities can be selected without putting
 the p12 password on a process command line:
@@ -449,6 +469,8 @@ and is good for seven days from that install.
 ```
 py test_filament.py --portable                       # offline core/signing paths
 py test_signing.py                                   # signing primitives
+py -B -m unittest test_install_flow -q                # mocked identity handoff
+node test_install_flow.js                            # offline UI state transitions
 py test_filament.py                                  # includes local tool/DDI checks
 ```
 

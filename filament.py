@@ -43,6 +43,8 @@ _TOOLS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # --------------------------------------------------------------------------
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+with open(os.path.join(HERE, "install_flow.js"), encoding="utf-8") as _install_source:
+    INSTALL_FLOW = _install_source.read()
 IOS_EXE = os.environ.get("FILAMENT_IOS_EXE", os.path.join(_TOOLS, "go-ios", "ios.exe"))
 PYTHON = sys.executable
 HOST = "127.0.0.1"
@@ -1372,7 +1374,7 @@ def signing_status(timeout=90):
 
 
 def sideload_check(app=None, p12=None, p12password=None, profile=None,
-                   install=False, timeout=900):
+                   install=False, timeout=900, use_identity=False):
     """Preflight (and optionally run) an install. -> dict. Never raises.
 
     Deliberately preflight-first and preflight-only by default. An install
@@ -1390,8 +1392,36 @@ def sideload_check(app=None, p12=None, p12password=None, profile=None,
         return {"ok": False, "output": "",
                 "error": "p12password must be a string"}
 
-    argv = [PYTHON, SIDELOAD_PY, "install" if install else "check"]
-    for path, flag in ((app, None), (p12, "--p12"), (profile, "--profile")):
+    if not isinstance(use_identity, bool):
+        return {"ok": False, "output": "", "error": "use_identity must be a boolean"}
+    if use_identity and any(value is not None for value in (p12, profile, p12password)):
+        return {"ok": False, "output": "",
+                "error": "choose the configured identity or custom signing files, not both"}
+    if install and not app:
+        return {"ok": False, "output": "", "error": "install needs an app path"}
+
+    interpreter = SIGNING_PYTHON if use_identity else PYTHON
+    if use_identity and not os.path.isfile(interpreter):
+        return {"ok": False, "output": "", "error": "the signing venv is not set up"}
+    paths = [(app, None)]
+    if use_identity:
+        # Resolve identity material on the server; the browser does not need
+        # to submit its paths or configured password. The child revalidates
+        # the identity and snapshots the files again on every actual install.
+        profile = SIGNING_PROFILE
+        if (not os.path.isfile(SIGNING_P12)
+                and os.path.isfile(SIGNING_PEM_KEY)
+                and os.path.isfile(SIGNING_PEM_CERT)):
+            paths.extend([(SIGNING_PEM_KEY, "--pem-key"),
+                          (SIGNING_PEM_CERT, "--pem-cert")])
+        else:
+            paths.append((SIGNING_P12, "--p12"))
+        p12password = SIGNING_P12_PASSWORD
+    else:
+        paths.append((p12, "--p12"))
+    paths.append((profile, "--profile"))
+    argv = [interpreter, SIDELOAD_PY, "install" if install else "check"]
+    for path, flag in paths:
         if not path:
             continue
         if not isinstance(path, (str, bytes, os.PathLike)):
@@ -1457,6 +1487,13 @@ def _parse_sideload_request(body):
     if not isinstance(install, bool):
         return None, "install must be a boolean"
     parsed["install"] = install
+    use_identity = body.get("use_identity", False)
+    if not isinstance(use_identity, bool):
+        return None, "use_identity must be a boolean"
+    if use_identity and any(parsed[name] is not None
+                            for name in ("p12", "profile", "p12password")):
+        return None, "choose the configured identity or custom signing files, not both"
+    parsed["use_identity"] = use_identity
     return parsed, None
 
 
@@ -1557,7 +1594,8 @@ class Handler(BaseHTTPRequestHandler):
             if not self._authed(qs):
                 return self._send(403, "<h1>403</h1><p>Missing session token.</p>",
                                   "text/html; charset=utf-8")
-            return self._send(200, UI.replace("__TOKEN__", TOKEN),
+            return self._send(200, UI.replace("__TOKEN__", TOKEN).replace(
+                "__INSTALL_FLOW__", INSTALL_FLOW),
                               "text/html; charset=utf-8")
 
         if not self._authed(qs):
@@ -1872,6 +1910,31 @@ input.f:focus{outline:none;border-color:var(--wire)}
 .fs a:hover{background:var(--panel);color:var(--wire)}
 .empty{color:var(--faint);font-size:12.5px;padding:14px 0}
 :focus-visible{outline:1px solid var(--wire);outline-offset:2px}
+/* Install workspace: named fields, visible next steps, and usable hit areas. */
+.install-head h2{font-size:26px;letter-spacing:-.04em;margin:0 0 8px}
+.install-head p,.install-section p{max-width:70ch;color:var(--dim);line-height:1.6}
+.install-section{max-width:960px;margin-top:24px;padding-top:24px;border-top:1px solid var(--line)}
+.install-section h3{font-size:18px;margin:0 0 14px}
+.install-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:0;list-style:none}
+.install-step{border:1px solid var(--line);padding:16px;border-radius:7px;background:var(--panel)}
+.install-step strong{display:block;font-size:15px;margin:9px 0}
+.install-step p{font-size:14px;margin:0;overflow-wrap:anywhere}
+.install-step .st{font:12px var(--mono);text-transform:uppercase}
+.install-route{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.install-route .act[aria-pressed="true"]{border-color:var(--wire);background:var(--wire-dim);color:var(--wire)}
+.install-field{display:flex;flex-direction:column;gap:7px;margin:16px 0;font-size:15px}
+.install-field input.f,.install-field select{box-sizing:border-box;min-height:46px;max-width:100%;width:100%;font-size:15px}
+.install-field select{background:var(--panel);color:var(--ink);border:1px solid var(--line);padding:10px}
+.install-field small{color:var(--dim);font-size:13px;line-height:1.5}
+.install-section button.act,.install-head button.act{min-height:44px;font-size:15px;padding:10px 16px}
+.install-section .console{height:auto;max-height:320px;min-height:60px;font-size:13px;margin-top:16px}
+.install-section a{color:var(--wire);text-underline-offset:4px}
+.install-status{font-size:14px;color:var(--dim);line-height:1.6}
+.install-section summary{cursor:pointer;padding:10px 0;color:var(--dim)}
+#sl-install:not(:disabled){background:var(--wire);color:var(--bg);border-color:var(--wire)}
+@media(max-width:900px){.install-steps{grid-template-columns:1fr}}
+@media(max-width:650px){body{grid-template-columns:1fr}aside{display:none}nav{overflow:auto;padding:0 8px}.pane{padding:16px}.ctl{flex-wrap:wrap}.install-section{margin-top:18px;padding-top:18px}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style></head><body>
 
 <aside>
@@ -1900,7 +1963,7 @@ input.f:focus{outline:none;border-color:var(--wire)}
     <div class="gate"><span class="lbl">Developer image</span><span class="st st-shut" id="g-image">--</span></div>
     <div class="gate"><span class="lbl">Screen capture</span><span class="st st-shut" id="g-capture">--</span></div>
     <div class="sub" id="ladder-note"></div>
-    <div class="gate"><span class="lbl">Signing</span><span class="st st-shut">absent</span></div>
+    <div class="gate"><span class="lbl">Signing</span><span class="st st-wait" id="g-signing">unchecked</span></div>
   </div>
 
   <div class="block">
@@ -1988,38 +2051,74 @@ input.f:focus{outline:none;border-color:var(--wire)}
   </section>
 
   <section class="pane" data-p="install">
-    <div class="notice" id="signing-box">
-      <h3>Signing identity <span class="m" id="signing-state">checking...</span></h3>
-      <p id="signing-why">&nbsp;</p>
-      <p>A signing identity is what makes <span class="m">tap</span> work. Everything
-         else &mdash; reading the screen, launching apps, capturing frames &mdash;
-         needs none. Sign in from a terminal rather than here, because a password
-         belongs in a <span class="m">getpass</span> prompt and not in a web form
-         the browser will offer to remember:</p>
-      <p class="m" id="signing-cmd">.signing-venv\Scripts\python.exe appleid.py login --apple-id you@example.com</p>
-      <div class="ctl"><button class="act" id="signing-refresh">Re-check</button></div>
-      <div class="console" id="signing-out" style="margin-top:8px"></div>
+    <div class="install-head">
+      <h2>Install an app</h2>
+      <p>Use a local IPA and an Apple-issued signing identity. Check the connection,
+         inspect the app, then install when its preflight passes.</p>
+      <button class="act" id="signing-refresh">Re-check setup</button>
     </div>
-    <div class="notice">
-      <h3>Installing an app needs an Apple-issued signing identity</h3>
-      <p>iOS verifies a provisioning profile's signature against Apple's
-         certificate authority. Nothing here can manufacture one &mdash; that is
-         cryptography, not configuration. What this panel does is check your
-         files <em>before</em> an upload, so a doomed install fails in a second
-         with the real reason instead of after a minute with
-         <span class="m">ApplicationVerificationFailed&nbsp;0xe8008001</span>.</p>
-      <p>A <strong>free</strong> Apple ID is enough to get a valid identity
-         (7-day certificates). A paid account gives 1-year ones.</p>
+    <div class="install-section" id="signing-box">
+      <h3>1. Prepare the connection</h3>
+      <ol class="install-steps" id="install-steps" aria-label="Device and signing setup"></ol>
+      <p class="install-status" id="signing-why" role="status">Setup has not been checked yet.</p>
+      <details><summary>Signing details and account setup</summary>
+        <p>The configured identity is checked locally. To create or renew one,
+           use the terminal's private password prompt:</p>
+        <p class="m" id="signing-cmd">.signing-venv\Scripts\python.exe appleid.py login --apple-id you@example.com</p>
+        <p>Then run <code>.signing-venv\Scripts\python.exe appleid.py identity --bundle-id com.you.app</code>
+           for your app's bundle ID. Expired sessions affect renewal; an existing valid identity can still pass local checks.</p>
+        <div class="console" id="signing-out"></div>
+      </details>
     </div>
-    <div class="ctl" style="flex-wrap:wrap;gap:6px">
-      <input class="f" id="sl-app" placeholder="path to .ipa or .app" autocomplete="off">
-      <input class="f" id="sl-profile" placeholder="path to .mobileprovision (optional)" autocomplete="off">
-      <input class="f" id="sl-p12" placeholder="path to .p12 (optional)" autocomplete="off">
-      <input class="f" id="sl-pw" type="password" placeholder="p12 password" autocomplete="off">
-      <button class="act" id="sl-check">Preflight</button>
-      <button class="act" id="sl-install" disabled>Install</button>
+    <div class="install-section">
+      <h3>2. Choose the installation path</h3>
+      <div class="install-route" role="group" aria-label="Installation path">
+        <button class="act" data-install-route="native" aria-pressed="true">Local IPA</button>
+        <button class="act" data-install-route="sidestore" aria-pressed="false">SideStore setup</button>
+        <button class="act" data-install-route="livecontainer" aria-pressed="false">LiveContainer setup</button>
+      </div>
+      <div id="route-sidestore" hidden>
+        <p>SideStore's current Windows guide uses iloader for the initial install and LocalDevVPN
+           for on-device refreshes. It requires an Apple Account, Wi-Fi and iOS 15 or later.
+           After a device update or reset, its pairing file may need to be replaced.</p>
+        <p><a href="https://docs.sidestore.io/docs/installation/prerequisites" target="_blank" rel="noopener noreferrer">Open SideStore's setup guide &nearr;</a></p>
+      </div>
+      <div id="route-livecontainer" hidden>
+        <p>Choose standalone LiveContainer or its integrated SideStore build in the official guide.
+           Complete certificate import and the JIT-less diagnostic before loading your apps.
+           An installed host alone does not prove guest apps will run.</p>
+        <p>Guest apps share the host's trust boundary: their data is not sandboxed from one another.
+           Some app features, including extensions and remote push notifications, are not supported.</p>
+        <p><a href="https://livecontainer.github.io/docs/installation" target="_blank" rel="noopener noreferrer">Open LiveContainer's installation guide &nearr;</a>
+           &nbsp; <a href="https://github.com/SSH-PuR66/LiveContainer-Plus" target="_blank" rel="noopener noreferrer">Review LiveContainer Plus source &nearr;</a></p>
+      </div>
+      <div id="route-native">
+        <label class="install-field" for="sl-app">App path on this Windows PC
+          <input class="f" id="sl-app" placeholder="C:\Apps\MyApp.ipa" autocomplete="off" spellcheck="false">
+          <small>Paste a full .ipa or .app path. The file stays on this PC until you choose Install.</small>
+        </label>
+        <label class="install-field" for="sl-identity">Signing method
+          <select id="sl-identity"><option value="configured">Use Filament's configured identity</option>
+            <option value="custom">Already signed app or custom signing files</option></select>
+          <small id="sl-identity-hint">Uses the local identity configuration, including PEM identities. No certificate paths to copy.</small>
+        </label>
+        <div id="sl-custom" hidden>
+          <label class="install-field" for="sl-profile">Provisioning profile (optional)
+            <input class="f" id="sl-profile" placeholder="C:\Signing\app.mobileprovision" autocomplete="off"></label>
+          <label class="install-field" for="sl-p12">PKCS#12 certificate (optional)
+            <input class="f" id="sl-p12" placeholder="C:\Signing\identity.p12" autocomplete="off"></label>
+          <label class="install-field" for="sl-pw">Certificate password
+            <input class="f" id="sl-pw" type="password" autocomplete="off">
+            <small>Leave these empty to check the package as-is. This checks signature files are present; iOS verifies the signature during installation.</small></label>
+        </div>
+        <div class="ctl">
+          <button class="act" id="sl-check" disabled>Check this app</button>
+          <button class="act" id="sl-install" disabled>Install on iPhone</button>
+        </div>
+        <p class="install-status" id="sl-status" role="status">Choose an app to begin.</p>
+        <details id="sl-details"><summary>Preflight and install output</summary><div class="console" id="sl-out"></div></details>
+      </div>
     </div>
-    <div class="console" id="sl-out"></div>
   </section>
 
   <section class="pane" data-p="svc">
@@ -2029,6 +2128,7 @@ input.f:focus{outline:none;border-color:var(--wire)}
 </main>
 
 <script>
+__INSTALL_FLOW__
 const T = "__TOKEN__";
 const api = (p, o) => fetch(p + (p.includes("?") ? "&" : "?") + "t=" + T,
   Object.assign({headers:{"X-Filament-Token":T}}, o||{}));
@@ -2054,13 +2154,26 @@ document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
 
 /* ---------- state ---------- */
 let devmodeOn = false;
+let installDevice = null, installSigning = null, installBusy = false, signingBusy = false;
+let statePollBusy = false;
+const installGate = FilamentInstall.createGate();
 function gate(el, on, actionable) {
   el.textContent = on ? "open" : (actionable ? "action" : "shut");
   el.className = "st " + (on ? "st-open" : (actionable ? "st-act" : "st-shut"));
 }
 async function poll() {
+  if (statePollBusy) return;
+  statePollBusy = true;
+  const started = Date.now();
   try {
-    const s = await (await api("/api/state")).json();
+    const response = await api("/api/state");
+    if (!response.ok) throw new Error("Device endpoint unavailable (" + response.status + ")");
+    const s = await response.json();
+    installDevice = s;
+    // A slow response must not make old device evidence appear newly observed.
+    // One poll at a time also prevents older replies overwriting a disconnect.
+    installGate.observe(s, started);
+    paintInstallSetup();
     const d = s.device || {};
     $("#linkstate").innerHTML = d.present
       ? '<span class="dot d-ok"></span>' + esc(d.name || "linked")
@@ -2120,7 +2233,12 @@ async function poll() {
       el.setAttribute("aria-pressed", st.enabled ? "true" : "false");
     }
   } catch (e) {
+    installDevice = null;
+    installGate.observe(null, Date.now());
+    paintInstallSetup();
     $("#linkstate").innerHTML = '<span class="dot d-bad"></span>daemon unreachable';
+  } finally {
+    statePollBusy = false;
   }
 }
 for (const f of ["assistivetouch","voiceover","zoom"]) {
@@ -2291,52 +2409,130 @@ async function pressUi(identifier, btn) {
 $("#ui-read").onclick = loadUi;
 
 /* ---------- install ---------- */
+function installInput() {
+  const configured = $("#sl-identity").value === "configured";
+  return {app: $("#sl-app").value.trim(), use_identity: configured,
+    profile: configured ? null : $("#sl-profile").value.trim(),
+    p12: configured ? null : $("#sl-p12").value.trim(),
+    p12password: configured ? null : $("#sl-pw").value};
+}
+function updateInstallButtons() {
+  const input = installInput();
+  $("#sl-check").disabled = installBusy || !input.app;
+  $("#sl-install").disabled = installBusy || !installGate.canInstall(input, Date.now());
+}
+function paintInstallSetup() {
+  const list = $("#install-steps");
+  list.replaceChildren();
+  for (const step of FilamentInstall.setup(installDevice, installSigning)) {
+    const li = document.createElement("li"); li.className = "install-step";
+    const badge = document.createElement("span");
+    badge.className = "st " + ({ready:"st-open",action:"st-act",waiting:"st-wait",unknown:"st-wait"}[step.status]);
+    badge.textContent = step.status;
+    const title = document.createElement("strong"); title.textContent = step.title;
+    const detail = document.createElement("p"); detail.textContent = step.detail;
+    li.append(badge, title, detail); list.appendChild(li);
+  }
+  updateInstallButtons();
+}
 async function sideload(install) {
-  const out = $("#sl-out");
-  out.textContent = install ? "installing\u2026" : "checking\u2026";
-  $("#sl-check").disabled = true; $("#sl-install").disabled = true;
+  if (installBusy) return;
+  const input = installInput();
+  if (!input.app || (install && !installGate.canInstall(input, Date.now()))) {
+    $("#sl-status").textContent = "Run a fresh app check with this device connected before installing.";
+    return;
+  }
+  const ticket = installGate.begin(input, Date.now());
+  installBusy = true;
+  updateInstallButtons();
+  const out = $("#sl-out"), status = $("#sl-status");
+  status.textContent = install ? "Installing. Keep the iPhone connected and unlocked."
+    : "Checking the app, profile, certificate and connected device...";
+  out.textContent = "";
   try {
-    const r = await (await api("/api/sideload", {
+    const response = await api("/api/sideload", {
       method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
-        app: $("#sl-app").value, profile: $("#sl-profile").value,
-        p12: $("#sl-p12").value, p12password: $("#sl-pw").value,
-        install: !!install
-      })
-    })).json();
-    /* textContent, never innerHTML: this is tool output containing paths and
-       certificate subjects, i.e. text we did not author. */
-    out.textContent = r.output || r.error || "(no output)";
-    /* Install only unlocks once a preflight has actually passed. */
-    $("#sl-install").disabled = !(r.ok && !install);
+      body: JSON.stringify(Object.assign({}, input, {install: !!install}))
+    });
+    const result = await response.json();
+    out.textContent = result.output || result.error || "(no output)";
+    const passed = response.ok && result.ok === true;
+    if (install) {
+      status.textContent = passed ? "Installation completed. Open the app on the phone to verify launch."
+        : "Installation did not complete. Read the result below, fix the reported issue, then check again.";
+    } else {
+      const accepted = installGate.finish(ticket, passed, installInput(), Date.now());
+      status.textContent = accepted ? "Local preflight passed. Install will re-check the files; iOS makes the final decision."
+        : passed ? "Check passed, but the inputs or device state changed. Re-check with the phone connected."
+        : "Preflight found a blocker. Read the result below and correct it before trying again.";
+    }
+    $("#sl-details").open = !passed;
   } catch (err) {
+    status.textContent = "The daemon could not complete the request. Re-check setup before trying again.";
     out.textContent = String(err);
+    $("#sl-details").open = true;
   } finally {
-    $("#sl-check").disabled = false;
+    installBusy = false;
+    updateInstallButtons();
   }
 }
 async function loadSigning() {
-  const state = $("#signing-state"), why = $("#signing-why"),
-        out = $("#signing-out");
-  state.textContent = "checking\u2026";
+  if (signingBusy) return;
+  signingBusy = true;
+  installGate.invalidate();
+  updateInstallButtons();
+  const why = $("#signing-why"), out = $("#signing-out"), rail = $("#g-signing");
+  $("#signing-refresh").disabled = true;
+  why.textContent = "Checking the connection and local signing identity...";
+  rail.textContent = "checking"; rail.className = "st st-wait";
   try {
-    const r = await (await api("/api/signing")).json();
-    state.textContent = r.ready ? "present" : "none";
-    state.style.color = r.ready ? "var(--ok)" : "var(--warn)";
-    /* Say what is missing, not just that something is. */
-    why.textContent = r.ready
-      ? "tap steps will land in apps signed with this identity."
-      : (r.reason || "not available") + (r.hint ? "  \u2014  " + r.hint : "");
-    out.textContent = r.output || "";
+    const response = await api("/api/signing");
+    if (!response.ok) throw new Error("Signing endpoint unavailable (" + response.status + ")");
+    const result = await response.json();
+    installSigning = result;
+    rail.textContent = result.ready === true ? "ready" : "action";
+    rail.className = "st " + (result.ready === true ? "st-open" : "st-act");
+    why.textContent = result.ready === true
+      ? "Configured identity passed local checks. App compatibility is checked separately."
+      : result.reason || "Signing readiness could not be verified.";
+    out.textContent = [result.output, ...(result.warnings || [])].filter(Boolean).join("\n");
   } catch (err) {
-    state.textContent = "unknown";
-    why.textContent = String(err);
+    installSigning = null;
+    rail.textContent = "unknown"; rail.className = "st st-wait";
+    why.textContent = "Signing status is unavailable. Start Filament, then re-check setup.";
+    out.textContent = String(err);
+  } finally {
+    signingBusy = false;
+    $("#signing-refresh").disabled = false;
+    paintInstallSetup();
   }
 }
-$("#signing-refresh").onclick = loadSigning;
-
+$("#signing-refresh").onclick = () => { poll(); loadSigning(); };
 $("#sl-check").onclick = () => sideload(false);
 $("#sl-install").onclick = () => sideload(true);
+for (const id of ["sl-app", "sl-profile", "sl-p12", "sl-pw", "sl-identity"]) {
+  $("#" + id).addEventListener("input", () => {
+    installGate.invalidate();
+    const custom = $("#sl-identity").value === "custom";
+    $("#sl-custom").hidden = !custom;
+    $("#sl-identity-hint").textContent = custom
+      ? "Check the package as-is, or provide your own certificate and profile. iOS verifies an existing signature."
+      : "Uses the local identity configuration, including PEM identities. No certificate paths to copy.";
+    $("#sl-status").textContent = $("#sl-app").value.trim()
+      ? "Inputs changed. Check this app before installing." : "Choose an app to begin.";
+    updateInstallButtons();
+  });
+}
+document.querySelectorAll("[data-install-route]").forEach(button => button.onclick = () => {
+  installGate.invalidate();
+  document.querySelectorAll("[data-install-route]").forEach(item =>
+    item.setAttribute("aria-pressed", item === button));
+  for (const route of ["native", "sidestore", "livecontainer"])
+    $("#route-" + route).hidden = route !== button.dataset.installRoute;
+  updateInstallButtons();
+});
+paintInstallSetup();
+setInterval(updateInstallButtons, 1000);
 
 async function loadSvc() {
   const rows = await (await api("/api/services")).json();
