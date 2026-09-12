@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="tests" src="https://img.shields.io/badge/tests-146%20passing-3fb950?style=flat-square&labelColor=161b22">
+  <img alt="portable tests" src="https://github.com/SSH-PuR66/filament/actions/workflows/portable-tests.yml/badge.svg">
   <img alt="platform" src="https://img.shields.io/badge/platform-Windows%2011-1f6feb?style=flat-square&labelColor=161b22">
   <img alt="admin" src="https://img.shields.io/badge/admin-not%20required-3fb950?style=flat-square&labelColor=161b22">
   <img alt="python" src="https://img.shields.io/badge/python-3.14-8b949e?style=flat-square&labelColor=161b22">
@@ -318,12 +318,91 @@ not that the artefact is right.
 ```
 py sideload.py check   app.ipa --p12 id.p12 --profile x.mobileprovision
 py sideload.py install app.ipa --p12 id.p12 --profile x.mobileprovision
+py sideload.py identity-status --json --p12 id.p12 --profile x.mobileprovision
 ```
 
 Verifies the profile's CMS signature against a digest-pinned Apple Root CA
 **before** uploading anything, so a doomed install fails in a second with the
 real reason instead of after a minute with `ApplicationVerificationFailed
 0xe8008001`.
+
+`GET /api/signing` has an explicit machine-readable contract:
+`supported: true` and `performs_signing: true` mean Filament contains a real
+sign-and-install implementation; `bypasses_code_signing: false` makes clear
+that it still uses Apple's trust chain. `ready` is a separate, fail-closed
+runtime verdict. It becomes true when the signing virtualenv and go-ios
+signer are present, a device is
+attached, the provisioning profile verifies against the pinned Apple Root CA
+and authorizes that device, and the p12 certificate is current, contains its
+private key, matches the profile's `DeveloperCertificates` entry byte-for-byte,
+and names the same team. If OpenSSL or any evidence is unavailable, readiness
+is false rather than guessed.
+The response labels this `readiness_scope: local_preflight`: Filament's
+zero-egress daemon does not ask Apple for live certificate/session revocation
+state, and the device remains the final authority when an install is attempted.
+An existing valid identity signs offline without an Apple login.
+`identity_creation_ready` separately requires a typed, non-expired Apple session
+for certificate/profile creation or renewal.
+
+Existing PEM identities are supported by `sideload.py` with
+`--pem-key key.pem --pem-cert cert.pem --profile app.mobileprovision` for
+`identity-status`, `check`, and `install`. The daemon accepts
+`FILAMENT_PEM_KEY`, `FILAMENT_PEM_CERT`, and `FILAMENT_PROFILE`, or a local,
+gitignored `.signing/identity-config.json` containing those three path values
+under `pem_key`, `pem_cert`, and `profile`. Paths in that file may be relative
+to the Filament directory. An ephemeral p12 is derived in private storage;
+the original PEM files are never changed.
+
+The **Install** tab now uses that configured identity directly. Choose a local
+app, keep **Use Filament's configured identity** selected, and select **Check
+this app**. No certificate paths or configured password need to be copied into
+the browser. The alternative signing method accepts custom files or checks an
+already signed package as-is. That package check looks for signing material;
+it does not independently verify an embedded code signature. iOS decides
+whether the installed app is accepted and can run.
+
+The panel separates device connection, Developer Mode, and local identity
+readiness, and provides links to the official SideStore and LiveContainer
+installation guides. Those routes are guidance, not an automated SideStore
+setup or evidence that a LiveContainer guest app will work.
+
+An app check is tied to the selected input values and the observed device.
+Changing a path, password, signing method, or installation route clears it.
+A disconnect, changed device/OS/Developer Mode, failed device poll, device
+observation older than 15 seconds, or check older than two minutes disables
+**Install on iPhone**. These are UI freshness checks; the existing install
+command also copies and validates its inputs again before invoking go-ios.
+
+By default the readiness check uses the files written by `appleid.py identity`
+under `.signing/identity`. Existing identities can be selected without putting
+the p12 password on a process command line:
+
+```
+$env:FILAMENT_P12 = 'C:\secure\identity.p12'
+$env:FILAMENT_PROFILE = 'C:\secure\identity.mobileprovision'
+$env:FILAMENT_P12_PASSWORD = 'your-password'
+$env:FILAMENT_OPENSSL_EXE = 'C:\secure\OpenSSL\bin\openssl.exe'
+$env:FILAMENT_UDID = 'your-device-udid' # required when several are attached
+```
+
+`FILAMENT_IDENTITY_DIR` changes both default file locations. These variables
+select and unlock legitimate signing material; they do not weaken or bypass
+profile, certificate, team, expiry, or device checks.
+`FILAMENT_OPENSSL_EXE` is only needed when OpenSSL is neither on `PATH` nor in
+Git for Windows' standard installation directory.
+
+For direct scripting, use `--p12password-stdin` rather than putting the
+password in command-line arguments. During an actual install, Filament copies
+the app, profile, and p12 into a private temporary directory and validates the
+same snapshots it gives the signer. Because go-ios only accepts its p12
+password as a process argument, Filament instead derives a short-lived,
+owner-only passwordless p12 copy for that one child invocation. The complete
+temporary directory is removed when the signer returns, including on failure.
+The same handling now covers the standalone zsign and rcodesign wrappers.
+Windows staging applies an explicit DACL for the current user and SYSTEM;
+POSIX staging uses mode `0700`. Legacy standalone `--p12password` input is
+retained for compatibility but exposes the secret in the wrapper's own argv;
+use `--p12password-stdin` for scripts and never put a real password in shell history.
 
 ### `rcsign.py` — when zsign cannot seal the app
 
@@ -388,17 +467,22 @@ and is good for seven days from that install.
 ## Tests
 
 ```
-py test_filament.py                                 # 83 tests
-.\.signing-venv\Scripts\python.exe test_signing.py  # 63 tests
+py test_filament.py --portable                       # offline core/signing paths
+py test_signing.py                                   # signing primitives
+py -B -m unittest test_install_flow -q                # mocked identity handoff
+node test_install_flow.js                            # offline UI state transitions
+py test_filament.py                                  # includes local tool/DDI checks
 ```
 
-No device, no network, no Apple ID required for either. Each of the 76 in the
-first suite corresponds to a defect that was actually present and found by
+The portable and signing-primitive suites need no device or Apple ID. Install
+`cryptography` and `certifi`; OpenSSL is required for CMS tests. The full suite
+also checks the locally staged go-ios/DDI and optional zsign runtime, so a
+clean CI checkout uses `--portable`. These checks cover defects found by
 running the code — a refcount that leaked a screen broadcast on `0.0.0.0`, a
 token comparison that raised on a non-ASCII character and killed the request, a
 backoff that failed to arm on the early-return paths.
 
-The 63 signing tests pin down what Apple's crypto lets you get wrong *quietly*:
+The signing tests pin down what Apple's crypto lets you get wrong *quietly*:
 the wrong PBKDF2 variant reads as "bad password", a dropped GCM AAD still
 decrypts on some libraries, and a certificate field renamed between API
 generations reads as success followed by an empty file. Each is tested by

@@ -1,0 +1,31 @@
+name: Portable tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-signing-and-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install offline test dependencies
+        run: python -m pip install --disable-pip-version-check cryptography certifi
+      - name: Test Apple signing primitives
+        run: python -B test_signing.py
+      - name: Test portable Filament paths
+        run: python -B test_filament.py --portable
+      - name: Test configured identity handoff
+        run: python -B -m unittest test_install_flow -q
+      - name: Test install UI state transitions
+        run: node test_install_flow.js
