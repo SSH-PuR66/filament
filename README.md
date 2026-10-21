@@ -1,3 +1,11 @@
+**Created and maintained by [Sergio Rodriguez (SSH-PuR66)](https://github.com/SSH-PuR66).**
+
+**The cable is the control plane.** A Windows-to-iPhone toolchain for inspecting UI state, capturing frames, running asserted flows, and examining the signing/install path. Start with [`filament.py`](filament.py), [automation flows](flows/), and the [device](test_filament.py) / [signing](test_signing.py) tests.
+
+The field notes below distinguish device observations from paths that remain unverified.
+
+---
+
 <p align="center">
   <img src="docs/banner.svg" alt="Filament — drive a physically connected iPhone from Windows" width="100%">
 </p>
